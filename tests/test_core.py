@@ -34,7 +34,7 @@ from core.plan import (  # noqa: E402
     normalise_plan,
     plan_public_view,
 )
-from core.prompts import calorie_analysis_prompt  # noqa: E402
+from core.prompts import calorie_analysis_prompt, chat_messages  # noqa: E402
 from core.text import (  # noqa: E402
     detect_command,
     format_progress_bar,
@@ -142,6 +142,30 @@ class ParsingTests(unittest.TestCase):
         self.assertIsNone(detect_command("שתתי כוס אספרסו עם נגיעה חלב סויה וניל"))
         self.assertIsNone(detect_command("שתיתי כוס קפה"))
         self.assertIsNone(detect_command("שתתי שייק חלבון"))
+        self.assertIsNone(
+            detect_command(
+                "מצטער, ספק ה-AI לא זמין כרגע 🙏\n"
+                "אפשר לכתוב תפריט לתוכנית הבסיסית, שתיתי, סיימתי אימון או סטטוס."
+            )
+        )
+        self.assertIsNone(detect_command("לא סיימתי אימון היום"))
+        self.assertIsNone(
+            detect_command(
+                "כלתי היום בצהריים חצי מנה שווארמה עם צלוחית חציל מטוגן. "
+                "בבוקר שתתי משקה פרו 20 גרם חלבון. וכוס אספרסו עם חלב סויה בטעם וניל."
+            )
+        )
+        self.assertIsNone(
+            detect_command(
+                "אכלתי היום בצהריים חצי מנה שווארמה עם צלוחית חציל מטוגן. "
+                "בבוקר שתתי משקה פרו 20 גרם חלבון. וכוס אספרסו עם חלב סויה בטעם וניל."
+            )
+        )
+        self.assertEqual(detect_command("סיימתי אימון היום"), "workout_done")
+        self.assertEqual(detect_command("סיימתי אימון 💪"), "workout_done")
+        self.assertEqual(detect_command("אימון בוצע!"), "workout_done")
+        self.assertEqual(detect_command("עשיתי אימון"), "workout_done")
+        self.assertEqual(detect_command("התאמנתי"), "workout_done")
 
     def test_questions(self):
         self.assertTrue(is_question("כוס אספרסו נכנס תחת מים?"))
@@ -408,6 +432,23 @@ class CaloriePromptTests(unittest.TestCase):
         self.assertIn("דני", prompt)
         self.assertIn("סלט יווני וקפה", prompt)
         self.assertIn("is_drink", prompt)
+
+    def test_chat_messages_alternation(self):
+        user = make_user(weight_kg=75, height_cm=175)
+        # History with consecutive user turns, leading assistant turn, etc.
+        history = [
+            {"role": "assistant", "content": "ברוך הבא"},
+            {"role": "user", "content": "הודעה 1"},
+            {"role": "user", "content": "הודעה 2"},
+            {"role": "assistant", "content": "תשובה 1"},
+            {"role": "assistant", "content": "תשובה 2"},
+        ]
+        system, messages = chat_messages({}, user, None, history, "הודעה 3")
+        self.assertEqual(messages[0]["role"], "user")
+        self.assertEqual(messages[-1]["role"], "user")
+        # Check strict alternation
+        for i in range(len(messages) - 1):
+            self.assertNotEqual(messages[i]["role"], messages[i + 1]["role"])
 
 
 if __name__ == "__main__":

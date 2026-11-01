@@ -26,11 +26,23 @@ class AnthropicProvider(AIProvider):
         if not self.ready:
             raise AIError("ספק ה-AI לא מוגדר במלואו (חסר מפתח או מודל).")
 
-        clean_messages = [
-            {"role": message["role"], "content": str(message["content"])}
-            for message in messages
-            if message.get("role") in {"user", "assistant"} and message.get("content")
-        ]
+        clean_messages: list[dict[str, str]] = []
+        for message in messages:
+            role = message.get("role")
+            content = str(message.get("content") or "").strip()
+            if role in {"user", "assistant"} and content:
+                if clean_messages and clean_messages[-1]["role"] == role:
+                    clean_messages[-1]["content"] += f"\n{content}"
+                else:
+                    clean_messages.append({"role": role, "content": content})
+
+        while clean_messages and clean_messages[0]["role"] != "user":
+            clean_messages.pop(0)
+        while clean_messages and clean_messages[-1]["role"] != "user":
+            clean_messages.pop()
+
+        if not clean_messages:
+            clean_messages = [{"role": "user", "content": "שלום"}]
         system_prompt = system
         if json_mode:
             system_prompt += (

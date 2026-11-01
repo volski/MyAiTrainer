@@ -136,13 +136,36 @@ def chat_messages(
 ) -> tuple[str, list[dict[str, str]]]:
     """Return ``(system, messages)`` for a conversational reply."""
     system = system_prompt(settings, user, plan)
-    messages: list[dict[str, str]] = []
+    raw_entries: list[dict[str, str]] = []
     for entry in history[-limit:]:
         role = entry.get("role")
         content = str(entry.get("content") or "").strip()
         if role in {"user", "assistant"} and content:
-            messages.append({"role": role, "content": content[:2000]})
-    messages.append({"role": "user", "content": str(text)[:2000]})
+            raw_entries.append({"role": role, "content": content[:2000]})
+
+    if text and str(text).strip():
+        raw_entries.append({"role": "user", "content": str(text).strip()[:2000]})
+
+    # Ensure alternating roles and valid structure:
+    # 1. Merge consecutive turns with the same role into a single message
+    messages: list[dict[str, str]] = []
+    for entry in raw_entries:
+        if messages and messages[-1]["role"] == entry["role"]:
+            messages[-1]["content"] = f"{messages[-1]['content']}\n{entry['content']}"
+        else:
+            messages.append({"role": entry["role"], "content": entry["content"]})
+
+    # 2. Must start with 'user'
+    while messages and messages[0]["role"] != "user":
+        messages.pop(0)
+
+    # 3. Must end with 'user'
+    while messages and messages[-1]["role"] != "user":
+        messages.pop()
+
+    if not messages:
+        messages = [{"role": "user", "content": str(text)[:2000] or "שלום"}]
+
     return system, messages
 
 

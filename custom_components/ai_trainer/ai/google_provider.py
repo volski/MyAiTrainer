@@ -30,17 +30,36 @@ class GoogleProvider(AIProvider):
         if not self.ready:
             raise AIError("ספק ה-AI לא מוגדר במלואו (חסר מפתח או מודל).")
 
-        contents = []
+        contents: list[dict[str, Any]] = []
         for message in messages:
             role = message.get("role")
             if role not in {"user", "assistant"} or not message.get("content"):
                 continue
-            contents.append(
-                {
-                    "role": "model" if role == "assistant" else "user",
-                    "parts": [{"text": str(message["content"])}],
-                }
-            )
+            gemini_role = "model" if role == "assistant" else "user"
+            text_part = str(message["content"]).strip()
+            if not text_part:
+                continue
+
+            if contents and contents[-1]["role"] == gemini_role:
+                contents[-1]["parts"].append({"text": text_part})
+            else:
+                contents.append(
+                    {
+                        "role": gemini_role,
+                        "parts": [{"text": text_part}],
+                    }
+                )
+
+        # Gemini requires that the first turn is 'user'
+        while contents and contents[0]["role"] != "user":
+            contents.pop(0)
+
+        # Gemini requires that the last turn is 'user'
+        while contents and contents[-1]["role"] != "user":
+            contents.pop()
+
+        if not contents:
+            contents = [{"role": "user", "parts": [{"text": "שלום"}]}]
 
         generation_config: dict[str, Any] = {
             "temperature": self.temperature,

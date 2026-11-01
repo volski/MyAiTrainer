@@ -399,6 +399,10 @@ def detect_command(text: Any) -> str | None:
     if not value:
         return None
 
+    # Error message quotes or forwarded system notices should never trigger commands
+    if value.startswith(("מצטער", "ספק ה-ai", "הספק לא", "שגיאה", "error")):
+        return None
+
     # Exact single punctuation / help
     if re.search(r"^(עזרה|help|פקודות|\?)$", value):
         return "help"
@@ -409,7 +413,7 @@ def detect_command(text: Any) -> str | None:
 
     # A meal log is conversational: let the AI answer it, even if the text
     # also mentions water.
-    if re.match(r"^(אכלתי|ארוחה|meal|ate)\b", value):
+    if re.match(r"^(אכלתי|כלתי|ארוחה|meal|ate)\b", value):
         return None
 
     # Water decrease/removal
@@ -422,14 +426,31 @@ def detect_command(text: Any) -> str | None:
 
     if re.search(r"^(סטטוס|מצב|התקדמות|status)\b", value):
         return "status"
-    if re.search(r"(סיימתי אימון|אימון בוצע|עשיתי אימון|התאמנתי|done workout|workout done)", value):
+
+    # Workout completed: match explicit workout declarations, not random sentences containing words
+    if re.match(
+        r"^(?:כן,?\s*)?(?:סיימתי אימון|אימון בוצע|עשיתי אימון|התאמנתי|סיימתי את האימון|done workout|workout done)(?:\s*(?:היום|עכשיו|💪|!|\.))*$",
+        value,
+    ):
         return "workout_done"
-    if re.search(r"(שתיתי|שתיה|שתייה|מים|כוס|water|drank)", value):
+
+    # Water logging: match explicit drinking statements or cup quantities, not random sentences
+    if re.match(r"^(?:שתיתי|שתתי|שתיה|שתייה|מים|כוס|water|drank)\b", value) or (
+        parse_water_cups(value) is not None
+        and re.search(r"\b(שתיתי|שתתי|מים|כוס|כוסות|ליטר|מ\"ל|מ״ל|water|drank)\b", value)
+    ):
         return "water"
-    if re.search(r"(שקלתי|עדכן משקל|משקל חדש|update weight|weighed)", value):
+
+    # Weight update
+    if re.match(r"^(?:שקלתי|עדכן משקל|משקל חדש|update weight|weighed)\b", value) or (
+        re.search(r"\b(שקלתי|עדכן משקל|משקל חדש)\b", value) and parse_weight_kg(value) is not None
+    ):
         return "weight_update"
-    if re.search(r"(תפריט|תוכנית|תכנית|מה לאכול|daily plan|menu)", value):
+
+    # Plan
+    if re.match(r"^(?:תפריט|תוכנית|תכנית|מה לאכול|daily plan|menu)(\b|$)", value):
         return "plan"
+
     if re.search(r"^(קלוריות|סיכום אכילה|כמה אכלתי|calories|calorie)(\b|$)", value):
         return "calories"
     if re.search(r"^(עצור|הפסק|תשתוק|stop|pause)\b", value):
