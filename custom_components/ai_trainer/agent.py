@@ -286,7 +286,8 @@ class TrainerAgent:
 
         store.add_history(user, "user", text)
         store.count_message()
-        user["stats"]["messages_today"] = int(user["stats"].get("messages_today", 0)) + 1
+        stats = user.setdefault("stats", {})
+        stats["messages_today"] = int(stats.get("messages_today", 0)) + 1
 
         # Two-step reset confirmation.
         if user.get("pending_reset"):
@@ -365,7 +366,7 @@ class TrainerAgent:
                 target,
             )
             return
-        stats = user["stats"]
+        stats = user.get("stats") or {}
         done = int(stats.get("water_ml_today") or 0) + int(round(cups * WATER_CUP_ML))
         stats["water_ml_today"] = min(done, MAX_WATER_ML)
         targets = targets_for(user.get("profile") or {})
@@ -392,7 +393,7 @@ class TrainerAgent:
     ) -> None:
         today = dt_util.now().date()
         key = today.isoformat()
-        stats = user["stats"]
+        stats = user.get("stats") or {}
         workouts = [str(day) for day in (stats.get("workouts") or [])]
         if key not in workouts:
             workouts.append(key)
@@ -525,7 +526,7 @@ class TrainerAgent:
             )
             return
 
-        user["stats"]["last_ai_at"] = dt_util.now().isoformat()
+        user.setdefault("stats", {})["last_ai_at"] = dt_util.now().isoformat()
         if is_meal:
             self._touch_checkin(user)
         self.runtime.store.touch(user)
@@ -655,7 +656,7 @@ class TrainerAgent:
     ) -> bool:
         """Send a water reminder for one user."""
         targets = targets_for(user.get("profile") or {})
-        stats = user["stats"]
+        stats = user.get("stats") or {}
         done = int(stats.get("water_ml_today") or 0)
         text = compose_water_reminder(user, targets, done, time_label)
         return await self.async_send(user, text, str(user.get("jid") or ""))
@@ -687,7 +688,7 @@ class TrainerAgent:
 
     def _reset_daily_counters(self, user: dict[str, Any]) -> None:
         today = dt_util.now().date().isoformat()
-        stats = user["stats"]
+        stats = user.get("stats") or {}
         if stats.get("water_date") != today:
             stats["water_date"] = today
             stats["water_ml_today"] = 0
@@ -697,7 +698,7 @@ class TrainerAgent:
 
     def _touch_checkin(self, user: dict[str, Any]) -> None:
         today = dt_util.now().date()
-        stats = user["stats"]
+        stats = user.get("stats") or {}
         dates = [str(day) for day in (stats.get("checkin_dates") or [])]
         if today.isoformat() not in dates:
             dates.append(today.isoformat())
@@ -705,7 +706,8 @@ class TrainerAgent:
         stats["last_checkin"] = today.isoformat()
 
     def _streak(self, user: dict[str, Any]) -> int:
-        dates = {str(day) for day in (user["stats"].get("checkin_dates") or [])}
+        stats = user.get("stats") or {}
+        dates = {str(day) for day in (stats.get("checkin_dates") or [])}
         if not dates:
             return 0
         day = dt_util.now().date()
@@ -719,7 +721,7 @@ class TrainerAgent:
 
     def _status_text(self, user: dict[str, Any]) -> str:
         profile = user.get("profile") or {}
-        stats = user["stats"]
+        stats = user.get("stats") or {}
         targets = targets_for(profile)
         self._reset_daily_counters(user)
 
