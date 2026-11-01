@@ -445,6 +445,11 @@ class TrainerAgent:
     # ------------------------------------------------------------------
     # Calorie & Image Analysis
     # ------------------------------------------------------------------
+    @staticmethod
+    def _read_file_bytes(path: str, max_bytes: int) -> bytes:
+        with open(path, "rb") as f:
+            return f.read(max_bytes + 1)
+
     async def _async_load_image(self, media_url: str) -> bytes | None:
         """Download or read image bytes from a URL or local file path."""
         url = str(media_url or "").strip()
@@ -454,10 +459,7 @@ class TrainerAgent:
         # Check local absolute path
         if os.path.isabs(url) and os.path.exists(url):
             try:
-                def _read() -> bytes:
-                    with open(url, "rb") as f:
-                        return f.read(MAX_IMAGE_BYTES + 1)
-                data = await asyncio.to_thread(_read)
+                data = await asyncio.to_thread(self._read_file_bytes, url, MAX_IMAGE_BYTES)
                 return data if len(data) <= MAX_IMAGE_BYTES else None
             except Exception as err:
                 _LOGGER.warning("Failed to read local media file %s: %s", url, err)
@@ -483,10 +485,7 @@ class TrainerAgent:
             candidate = os.path.join(base, url.lstrip("/\\"))
             if os.path.exists(candidate):
                 try:
-                    def _read_candidate() -> bytes:
-                        with open(candidate, "rb") as f:
-                            return f.read(MAX_IMAGE_BYTES + 1)
-                    data = await asyncio.to_thread(_read_candidate)
+                    data = await asyncio.to_thread(self._read_file_bytes, candidate, MAX_IMAGE_BYTES)
                     return data if len(data) <= MAX_IMAGE_BYTES else None
                 except Exception as err:
                     _LOGGER.warning("Failed to read media candidate %s: %s", candidate, err)

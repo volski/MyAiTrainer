@@ -76,17 +76,6 @@ class AIProvider:
         """
         raise AIError("ספק ה-AI לא תומך בניתוח תמונות.")
 
-    async def complete_with_image(
-        self,
-        system: str,
-        prompt: str,
-        image_bytes: bytes,
-        mime_type: str = "image/jpeg",
-        json_mode: bool = False,
-    ) -> str:
-        """Return the assistant text for a prompt that includes an image."""
-        raise NotImplementedError
-
     async def test(self) -> str:
         """Run a very small completion to verify credentials and model."""
         return await self.complete(
