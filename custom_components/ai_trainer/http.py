@@ -315,12 +315,15 @@ class UserView(HomeAssistantView):
             return self.json({"error": "User not found."}, status_code=404)
         try:
             detail = runtime.user_detail(user)
+            return self.json({"user": detail})
         except Exception as err:  # noqa: BLE001 - surface the real cause to the caller
             _LOGGER.exception("AI Trainer user_detail failed")
-            return self.json(
-                {"error": f"{type(err).__name__}: {err}"}, status_code=500
-            )
-        return self.json({"user": detail})
+            try:
+                return self.json(
+                    {"error": f"{type(err).__name__}: {err}"}, status_code=500
+                )
+            except Exception:  # noqa: BLE001
+                return web.Response(text=f"{type(err).__name__}: {err}", status=500)
 
     async def patch(self, request: web.Request) -> web.Response:
         if not _is_admin(request):
