@@ -154,7 +154,7 @@ class ConfigView(HomeAssistantView):
     name = "api:ai_trainer:config"
     requires_auth = True
 
-    async def get(self, request: web.Request) -> web.Response:
+    async def get(self, request: web.Request, user_id: str = "") -> web.Response:
         if not _is_admin(request):
             return _forbidden()
         runtime, error = await _runtime(request)
@@ -163,7 +163,7 @@ class ConfigView(HomeAssistantView):
         assert runtime is not None
         return self.json(runtime.config_payload())
 
-    async def post(self, request: web.Request) -> web.Response:
+    async def post(self, request: web.Request, user_id: str = "") -> web.Response:
         if not _is_admin(request):
             return _forbidden()
         runtime, error = await _runtime(request)
@@ -261,7 +261,7 @@ class UsersView(HomeAssistantView):
     name = "api:ai_trainer:users"
     requires_auth = True
 
-    async def get(self, request: web.Request) -> web.Response:
+    async def get(self, request: web.Request, user_id: str = "") -> web.Response:
         if not _is_admin(request):
             return _forbidden()
         runtime, error = await _runtime(request)
@@ -277,7 +277,7 @@ class UsersView(HomeAssistantView):
             {"users": [_json_safe(runtime.user_summary(user)) for user in users]}
         )
 
-    async def post(self, request: web.Request) -> web.Response:
+    async def post(self, request: web.Request, user_id: str = "") -> web.Response:
         if not _is_admin(request):
             return _forbidden()
         runtime, error = await _runtime(request)
@@ -322,7 +322,7 @@ class UserView(HomeAssistantView):
     name = "api:ai_trainer:user"
     requires_auth = True
 
-    async def get(self, request: web.Request) -> web.Response:
+    async def get(self, request: web.Request, user_id: str = "") -> web.Response:
         try:
             if not _is_admin(request):
                 return _forbidden()
@@ -370,7 +370,7 @@ class UserView(HomeAssistantView):
             except Exception:  # noqa: BLE001
                 return web.Response(text=f"{type(err).__name__}: {err}", status=500)
 
-    async def patch(self, request: web.Request) -> web.Response:
+    async def patch(self, request: web.Request, user_id: str = "") -> web.Response:
         if not _is_admin(request):
             return _forbidden()
         runtime, error = await _runtime(request)
@@ -440,7 +440,7 @@ class UserView(HomeAssistantView):
         runtime.store.touch(user)
         return self.json({"ok": True, "user": runtime.user_detail(user)})
 
-    async def delete(self, request: web.Request) -> web.Response:
+    async def delete(self, request: web.Request, user_id: str = "") -> web.Response:
         if not _is_admin(request):
             return _forbidden()
         runtime, error = await _runtime(request)
@@ -462,7 +462,7 @@ class UserDeleteView(HomeAssistantView):
     name = "api:ai_trainer:user_delete"
     requires_auth = True
 
-    async def post(self, request: web.Request) -> web.Response:
+    async def post(self, request: web.Request, user_id: str = "") -> web.Response:
         if not _is_admin(request):
             return _forbidden()
         runtime, error = await _runtime(request)
@@ -486,7 +486,7 @@ class UserResetView(HomeAssistantView):
     name = "api:ai_trainer:user_reset"
     requires_auth = True
 
-    async def post(self, request: web.Request) -> web.Response:
+    async def post(self, request: web.Request, user_id: str = "") -> web.Response:
         if not _is_admin(request):
             return _forbidden()
         runtime, error = await _runtime(request)
@@ -516,7 +516,7 @@ class UserPlanView(HomeAssistantView):
     name = "api:ai_trainer:user_plan"
     requires_auth = True
 
-    async def post(self, request: web.Request) -> web.Response:
+    async def post(self, request: web.Request, user_id: str = "") -> web.Response:
         if not _is_admin(request):
             return _forbidden()
         runtime, error = await _runtime(request)
@@ -560,7 +560,7 @@ class UserMessageView(HomeAssistantView):
     name = "api:ai_trainer:user_message"
     requires_auth = True
 
-    async def post(self, request: web.Request) -> web.Response:
+    async def post(self, request: web.Request, user_id: str = "") -> web.Response:
         if not _is_admin(request):
             return _forbidden()
         runtime, error = await _runtime(request)
@@ -591,7 +591,7 @@ class UserSimulateView(HomeAssistantView):
     name = "api:ai_trainer:user_simulate"
     requires_auth = True
 
-    async def post(self, request: web.Request) -> web.Response:
+    async def post(self, request: web.Request, user_id: str = "") -> web.Response:
         if not _is_admin(request):
             return _forbidden()
         runtime, error = await _runtime(request)
@@ -625,7 +625,7 @@ class TestView(HomeAssistantView):
     name = "api:ai_trainer:test"
     requires_auth = True
 
-    async def post(self, request: web.Request) -> web.Response:
+    async def post(self, request: web.Request, user_id: str = "") -> web.Response:
         if not _is_admin(request):
             return _forbidden()
         runtime, error = await _runtime(request)
@@ -674,7 +674,7 @@ class LogsView(HomeAssistantView):
     name = "api:ai_trainer:logs"
     requires_auth = True
 
-    async def get(self, request: web.Request) -> web.Response:
+    async def get(self, request: web.Request, user_id: str = "") -> web.Response:
         if not _is_admin(request):
             return _forbidden()
         runtime, error = await _runtime(request)
