@@ -221,6 +221,8 @@ class TrainerRuntime:
         targets = targets_for(profile)
         water_done = int(stats.get("water_ml_today") or 0)
         water_target = int(targets.get("water_ml") or 0)
+        cal_done = int(stats.get("calories_today") or 0)
+        cal_target = int(targets.get("calories") or 0)
         today = dt_util.now().date()
         week_start = (today - timedelta(days=6)).isoformat()
         week_workouts = len(
@@ -243,6 +245,12 @@ class TrainerRuntime:
             "bmi_category": targets.get("bmi_category"),
             "bmi_color": targets.get("bmi_color"),
             "calories": targets.get("calories"),
+            "calories_today": cal_done,
+            "calories_target": cal_target,
+            "calories_percent": (
+                int(round(cal_done / cal_target * 100)) if cal_target else 0
+            ),
+            "food_log": list(stats.get("food_log") or []),
             "protein_g": targets.get("protein_g"),
             "water_l": targets.get("water_l"),
             "water_done_ml": water_done,

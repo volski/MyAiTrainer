@@ -13,7 +13,7 @@ from typing import Any, Final
 
 DOMAIN: Final = "ai_trainer"
 NAME: Final = "AI Trainer"
-VERSION: Final = "1.0.18"
+VERSION: Final = "1.0.19"
 
 # Frontend
 PANEL_URL: Final = "ai-trainer"
@@ -156,6 +156,9 @@ LOG_LIMIT: Final = 300
 
 WATER_CUP_ML: Final = 250
 MAX_WATER_ML: Final = 6000
+MAX_DAILY_CALORIES: Final = 10000
+MAX_FOOD_LOG_ITEMS: Final = 30
+MAX_IMAGE_BYTES: Final = 10 * 1024 * 1024  # 10 MB
 
 
 def merged_settings(

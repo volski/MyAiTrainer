@@ -61,6 +61,32 @@ class AIProvider:
         """Return the assistant text for a conversation."""
         raise NotImplementedError
 
+    async def complete_with_image(
+        self,
+        system: str,
+        prompt: str,
+        image_bytes: bytes,
+        mime_type: str = "image/jpeg",
+        json_mode: bool = False,
+    ) -> str:
+        """Return assistant text for a prompt accompanied by an image.
+
+        Providers that support vision override this. The default raises so
+        callers can fall back to a text-only reply.
+        """
+        raise AIError("ספק ה-AI לא תומך בניתוח תמונות.")
+
+    async def complete_with_image(
+        self,
+        system: str,
+        prompt: str,
+        image_bytes: bytes,
+        mime_type: str = "image/jpeg",
+        json_mode: bool = False,
+    ) -> str:
+        """Return the assistant text for a prompt that includes an image."""
+        raise NotImplementedError
+
     async def test(self) -> str:
         """Run a very small completion to verify credentials and model."""
         return await self.complete(

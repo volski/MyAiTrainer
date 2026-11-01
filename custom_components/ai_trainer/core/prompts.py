@@ -196,3 +196,37 @@ def checkin_prompt(user: dict[str, Any], text: str) -> str:
         "תן משוב קצר (2–4 משפטים): מה עבד, מה אפשר לשפר, והצע התאמה קטנה אחת "
         "שתואמת ליעד שלו/ה. אל תנזוף. סיים בשאלה אחת."
     )
+
+
+def calorie_analysis_prompt(user: dict[str, Any], caption: str = "") -> tuple[str, str]:
+    """Return ``(system, user_prompt)`` for image-based calorie estimation.
+
+    The AI is expected to return JSON with ``item``, ``kcal``, and
+    ``is_drink`` fields.
+    """
+    profile = user.get("profile") or {}
+    targets = targets_for(profile)
+    name = clean_name(user.get("name"))
+
+    system = (
+        "אתה דיאטן AI מומחה בהערכת קלוריות ממזון ומשקאות.\n"
+        "ענה בעברית בלבד.\n"
+        "החזר JSON תקין בלבד — בלי טקסט לפני או אחרי, בלי ```.\n\n"
+        "כללים:\n"
+        "1. זהה את המנה/המשקה בתמונה.\n"
+        "2. העריך את הקלוריות (קק\"ל) בצורה מציאותית ושמרנית.\n"
+        "3. אם זה משקה (מים, קפה, מיץ, אלכוהול, סמוטי...) סמן is_drink=true.\n"
+        "4. אם לא ניתן לזהות מזון או שתייה בתמונה, החזר {\"item\":null,\"kcal\":0,\"is_drink\":false,\"description\":\"\"}.\n"
+        "5. אל תמציא — אם לא בטוח, העריך טווח ותן את האמצע.\n"
+    )
+
+    caption_line = f'\nהמשתמש צירף את הכיתוב: "{caption[:300]}"' if caption else ""
+
+    user_prompt = (
+        f"נתח את התמונה עבור {name}.\n"
+        f"יעד קלורי יומי: {targets.get('calories') or '—'} קק\"ל.\n"
+        f"{caption_line}\n\n"
+        'החזר בדיוק במבנה הזה:\n'
+        '{"item":"שם המנה/משקה","kcal":350,"is_drink":false,"description":"תיאור קצר של מה שזוהה"}'
+    )
+    return system, user_prompt

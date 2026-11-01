@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 from collections.abc import Sequence
 from typing import Any
 from urllib.parse import quote
@@ -54,7 +55,51 @@ class GoogleProvider(AIProvider):
             "generationConfig": generation_config,
         }
         data = await self._post_json(self._url(), payload, {"Content-Type": "application/json"})
+        return self._extract_text(data)
 
+    async def complete_with_image(
+        self,
+        system: str,
+        prompt: str,
+        image_bytes: bytes,
+        mime_type: str = "image/jpeg",
+        json_mode: bool = False,
+    ) -> str:
+        if not self.ready:
+            raise AIError("ספק ה-AI לא מוגדר במלואו (חסר מפתח או מודל).")
+
+        b64 = base64.b64encode(image_bytes).decode("ascii")
+        generation_config: dict[str, Any] = {
+            "temperature": self.temperature,
+            "maxOutputTokens": self.max_tokens,
+        }
+        if json_mode:
+            generation_config["responseMimeType"] = "application/json"
+
+        payload: dict[str, Any] = {
+            "systemInstruction": {"parts": [{"text": system}]},
+            "contents": [
+                {
+                    "role": "user",
+                    "parts": [
+                        {"text": prompt},
+                        {
+                            "inline_data": {
+                                "mime_type": mime_type or "image/jpeg",
+                                "data": b64,
+                            }
+                        },
+                    ],
+                }
+            ],
+            "generationConfig": generation_config,
+        }
+        data = await self._post_json(self._url(), payload, {"Content-Type": "application/json"})
+        return self._extract_text(data)
+
+    @staticmethod
+    def _extract_text(data: dict[str, Any]) -> str:
+        """Extract the text from a Gemini generateContent response."""
         feedback = data.get("promptFeedback") or {}
         if feedback.get("blockReason"):
             raise AIError("הבקשה נחסמה על ידי ספק ה-AI.")

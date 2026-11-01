@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 from collections.abc import Sequence
 from typing import Any
@@ -52,6 +53,46 @@ class OpenAIProvider(AIProvider):
             data = await self._post_json(self._url(), payload, self._headers())
         except AIError as err:
             # Some compatible servers reject response_format with a 400.
+            if json_mode and err.status == 400:
+                payload.pop("response_format", None)
+                data = await self._post_json(self._url(), payload, self._headers())
+            else:
+                raise
+        return _openai_text(data)
+
+    async def complete_with_image(
+        self,
+        system: str,
+        prompt: str,
+        image_bytes: bytes,
+        mime_type: str = "image/jpeg",
+        json_mode: bool = False,
+    ) -> str:
+        if not self.ready:
+            raise AIError("ספק ה-AI לא מוגדר במלואו (חסר מפתח או מודל).")
+        b64 = base64.b64encode(image_bytes).decode("ascii")
+        data_url = f"data:{mime_type};base64,{b64}"
+        messages = [
+            {"role": "system", "content": system},
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {"url": data_url}},
+                ],
+            },
+        ]
+        payload: dict[str, Any] = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": self.temperature,
+            "max_tokens": self.max_tokens,
+        }
+        if json_mode:
+            payload["response_format"] = {"type": "json_object"}
+        try:
+            data = await self._post_json(self._url(), payload, self._headers())
+        except AIError as err:
             if json_mode and err.status == 400:
                 payload.pop("response_format", None)
                 data = await self._post_json(self._url(), payload, self._headers())

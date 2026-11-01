@@ -198,6 +198,8 @@ def detect_command(text: Any) -> str | None:
         return "weight_update"
     if re.search(r"(תפריט|תוכנית|תכנית|מה לאכול|daily plan|menu)", value):
         return "plan"
+    if re.search(r"^(קלוריות|סיכום אכילה|כמה אכלתי|calories|calorie)(\b|$)", value):
+        return "calories"
     if re.search(r"^(עצור|הפסק|תשתוק|stop|pause)\b", value):
         return "pause"
     if re.search(r"^(הפעל|תחזור|resume|start)\b", value):

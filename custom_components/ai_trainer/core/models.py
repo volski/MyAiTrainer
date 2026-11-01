@@ -54,6 +54,9 @@ def new_stats(today: str) -> dict[str, Any]:
         "total_workouts": 0,
         "last_checkin": None,
         "last_ai_at": None,
+        "calories_today": 0,
+        "calories_date": today,
+        "food_log": [],
     }
 
 
@@ -77,6 +80,7 @@ def new_user(
         "onboarding_step": "goal",
         "greeted": False,
         "pending_reset": False,
+        "pending_calorie_add": None,
         "notes": "",
         "profile": new_profile(),
         "plan": None,

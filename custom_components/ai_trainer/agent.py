@@ -13,10 +13,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from collections import deque
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
+import aiohttp
 from homeassistant.util import dt as dt_util
 
 from .ai import AIError, parse_json_response
@@ -28,6 +30,9 @@ from .const import (
     CONF_MAX_USERS,
     CONF_MIN_AI_INTERVAL,
     CONF_WATER_TIMES,
+    MAX_DAILY_CALORIES,
+    MAX_FOOD_LOG_ITEMS,
+    MAX_IMAGE_BYTES,
     MAX_WATER_ML,
     WATER_CUP_ML,
 )
@@ -40,7 +45,7 @@ from .core.plan import (
     fallback_plan,
     normalise_plan,
 )
-from .core.prompts import chat_messages, checkin_prompt, plan_messages
+from .core.prompts import calorie_analysis_prompt, chat_messages, checkin_prompt, plan_messages
 from .core.text import (
     clean_name,
     detect_command,
@@ -60,6 +65,8 @@ HELP_TEXT = (
     "• *תפריט* / *תוכנית* — התוכנית של היום\n"
     "• *שתיתי 2* — תיעוד כוסות מים\n"
     "• *אכלתי ...* — משוב תזונתי\n"
+    "• 📸 *שלחו תמונת אוכל/שתייה* — ספירת קלוריות\n"
+    "• *קלוריות* — סיכום הקלוריות של היום\n"
     "• *סיימתי אימון* — סימון אימון\n"
     "• *שקלתי 77.5* — עדכון משקל\n"
     "• *סטטוס* — ההתקדמות שלך\n"
@@ -76,7 +83,7 @@ NO_AI_TEXT = (
     "כדי לקבל שיחה חכמה, הגדירו ספק AI בלוח הבקרה של AI Trainer."
 )
 
-MEDIA_TEXT = "כרגע אני מבין הודעות טקסט בלבד 🙂 כתבו לי במילים ואעזור."
+MEDIA_TEXT = "כרגע אני מבין הודעות טקסט ותמונות אוכל 🙂 כתבו לי במילים או שלחו תמונה של מנה ואעריך קלוריות."
 
 ACCEPTED_EVENT_TYPES = {
     "chat", "text", "message", "incoming", "received", "button_reply",
@@ -207,6 +214,8 @@ class TrainerAgent:
             text=content,
             is_group=is_group,
             message_id=message_id,
+            media_url=str(data.get("media_url") or data.get("media_path") or "").strip(),
+            media_type=str(data.get("media_type") or data.get("media_mimetype") or "").strip().lower(),
         )
 
     # ------------------------------------------------------------------
@@ -220,6 +229,8 @@ class TrainerAgent:
         text: str,
         is_group: bool = False,
         message_id: str = "",
+        media_url: str = "",
+        media_type: str = "",
     ) -> None:
         """Handle one inbound text message (already filtered)."""
         phone = normalize_phone(phone)
@@ -234,6 +245,8 @@ class TrainerAgent:
                     text=str(text or "").strip(),
                     is_group=is_group,
                     message_id=message_id,
+                    media_url=media_url,
+                    media_type=media_type,
                 )
             except Exception as err:  # noqa: BLE001 - never kill the listener
                 _LOGGER.exception("AI Trainer failed to handle message")
@@ -249,6 +262,8 @@ class TrainerAgent:
         text: str,
         is_group: bool,
         message_id: str,
+        media_url: str = "",
+        media_type: str = "",
     ) -> None:
         store = self.runtime.store
         settings = self.runtime.settings
@@ -281,8 +296,13 @@ class TrainerAgent:
             user["name"] = name
         self._reset_daily_counters(user)
 
-        if not text:
+        # Image with no text: try calorie analysis if it looks like food.
+        has_image = bool(media_url and (media_type or "").startswith("image"))
+        if not text and not has_image:
             await self.async_send(user, MEDIA_TEXT, target)
+            return
+        if has_image:
+            await self._async_image_calorie(user, text, target, phone, media_url, media_type)
             return
 
         store.add_history(user, "user", text)
@@ -309,6 +329,22 @@ class TrainerAgent:
                 store.touch(user)
                 await self.async_send(user, "בוטל — הפרופיל נשמר 🙂", target)
             return
+
+        # Calorie confirmation: add analysed food/drink to daily count.
+        pending_cal = user.get("pending_calorie_add")
+        if isinstance(pending_cal, dict) and pending_cal.get("kcal"):
+            lower = normalise_hebrew(text)
+            if lower in {"כן", "מאשר", "מאשרת", "yes", "confirm", "y", "תוסיף", "הוסף"}:
+                await self._async_confirm_calories(user, pending_cal, target)
+                return
+            elif lower in {"לא", "no", "ביטול", "cancel", "n"}:
+                user["pending_calorie_add"] = None
+                store.touch(user)
+                await self.async_send(user, "בוטל — לא נרשם 🙂", target)
+                return
+            # Any other text clears the pending and falls through to normal handling.
+            user["pending_calorie_add"] = None
+            store.touch(user)
 
         # Allow delete/reset even during onboarding.
         command = detect_command(text)
@@ -358,6 +394,8 @@ class TrainerAgent:
             await self.async_send(user, self._status_text(user), target)
         elif command == "plan":
             await self.async_send_plan(user, target=target, force=False)
+        elif command == "calories":
+            await self.async_send(user, self._calories_text(user), target)
         elif command == "water":
             await self._async_water(user, text, target)
         elif command == "workout_done":
@@ -403,6 +441,243 @@ class TrainerAgent:
             await self.async_send(user, "בוטל. ממשיכים כרגיל 🙂", target)
         else:
             await self._async_general_reply(user, text, target, phone)
+
+    # ------------------------------------------------------------------
+    # Calorie & Image Analysis
+    # ------------------------------------------------------------------
+    async def _async_load_image(self, media_url: str) -> bytes | None:
+        """Download or read image bytes from a URL or local file path."""
+        url = str(media_url or "").strip()
+        if not url:
+            return None
+
+        # Check local absolute path
+        if os.path.isabs(url) and os.path.exists(url):
+            try:
+                def _read() -> bytes:
+                    with open(url, "rb") as f:
+                        return f.read(MAX_IMAGE_BYTES + 1)
+                data = await asyncio.to_thread(_read)
+                return data if len(data) <= MAX_IMAGE_BYTES else None
+            except Exception as err:
+                _LOGGER.warning("Failed to read local media file %s: %s", url, err)
+                return None
+
+        # Check HTTP / HTTPS URL
+        if url.startswith(("http://", "https://")):
+            session = self.runtime._session
+            if session is None or session.closed:
+                return None
+            try:
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=25)) as resp:
+                    if resp.status == 200:
+                        data = await resp.read()
+                        return data if len(data) <= MAX_IMAGE_BYTES else None
+                    _LOGGER.warning("Media download failed with status %s: %s", resp.status, url)
+            except Exception as err:
+                _LOGGER.warning("Failed to download media from %s: %s", url, err)
+                return None
+
+        # Check relative paths in Home Assistant media or config directories
+        for base in (self.runtime.hass.config.path("media"), self.runtime.hass.config.config_dir):
+            candidate = os.path.join(base, url.lstrip("/\\"))
+            if os.path.exists(candidate):
+                try:
+                    def _read_candidate() -> bytes:
+                        with open(candidate, "rb") as f:
+                            return f.read(MAX_IMAGE_BYTES + 1)
+                    data = await asyncio.to_thread(_read_candidate)
+                    return data if len(data) <= MAX_IMAGE_BYTES else None
+                except Exception as err:
+                    _LOGGER.warning("Failed to read media candidate %s: %s", candidate, err)
+
+        return None
+
+    async def _async_image_calorie(
+        self,
+        user: dict[str, Any],
+        text: str,
+        target: str,
+        phone: str,
+        media_url: str,
+        media_type: str,
+    ) -> None:
+        """Analyze a food or drink image, estimate calories, and prompt for confirmation."""
+        provider = self.runtime.provider
+        if not provider or not provider.ready:
+            await self.async_send(user, NO_AI_TEXT, target)
+            return
+
+        image_bytes = await self._async_load_image(media_url)
+        if not image_bytes:
+            await self.async_send(
+                user,
+                "לא הצלחתי לטעון את התמונה ששלחת 🙏 ודאו שהתמונה נשלחה כתמונה רגילה ונסו שוב.",
+                target,
+            )
+            return
+
+        mime = media_type or "image/jpeg"
+        if not mime.startswith("image/"):
+            mime = "image/jpeg"
+
+        system, prompt = calorie_analysis_prompt(user, caption=text)
+        await self._throttle_ai(user)
+
+        try:
+            raw = await provider.complete_with_image(
+                system=system,
+                prompt=prompt,
+                image_bytes=image_bytes,
+                mime_type=mime,
+                json_mode=True,
+            )
+            parsed = parse_json_response(raw)
+        except AIError as err:
+            _LOGGER.warning("AI Trainer image calorie analysis failed: %s", err)
+            self.runtime.logs.error("ai_error", str(err), phone)
+            await self.async_send(
+                user,
+                "מצטער, הייתה בעיה בניתוח התמונה מול ספק ה-AI 🙏 נסו שוב בעוד רגע.",
+                target,
+            )
+            return
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.exception("AI Trainer unexpected image analysis failure")
+            self.runtime.logs.error("ai_error", type(err).__name__, phone)
+            await self.async_send(
+                user, "משהו השתבש בניתוח התמונה. נסו שוב בעוד רגע 🙏", target
+            )
+            return
+
+        user.setdefault("stats", {})["last_ai_at"] = dt_util.now().isoformat()
+
+        if not isinstance(parsed, dict) or not parsed.get("item"):
+            desc = str((parsed or {}).get("description") or "").strip()
+            reply = (
+                f"🔍 {desc}\n\nלא הצלחתי לזהות בבירור מנה או משקה בתמונה. תוכלו לכתוב לי במילים מה זה?"
+                if desc
+                else "🔍 לא הצלחתי לזהות אוכל או שתייה בתמונה. תוכלו לכתוב לי במילים מה אכלתם?"
+            )
+            await self.async_send(user, reply, target)
+            return
+
+        item = str(parsed.get("item") or "").strip()
+        kcal = max(0, int(round(float(parsed.get("kcal") or 0))))
+        is_drink = bool(parsed.get("is_drink"))
+        description = str(parsed.get("description") or "").strip()
+
+        user["pending_calorie_add"] = {
+            "item": item,
+            "kcal": kcal,
+            "is_drink": is_drink,
+            "description": description,
+            "time": dt_util.now().isoformat(),
+        }
+        self.runtime.store.touch(user)
+
+        emoji = "🥤" if is_drink else "🍽️"
+        lines = [
+            f"{emoji} *זיהיתי:* {item}",
+            f"🔥 *הערכת קלוריות:* ~{kcal} קק\"ל",
+        ]
+        if description and description != item:
+            lines.append(f"📝 {description}")
+        lines.append("\nלהוסיף לספירה היומית שלך? כתבו *כן* או *לא*.")
+        await self.async_send(user, "\n".join(lines), target)
+
+    async def _async_confirm_calories(
+        self,
+        user: dict[str, Any],
+        pending_cal: dict[str, Any],
+        target: str,
+    ) -> None:
+        """Confirm adding estimated calories and food/drink to the daily count."""
+        stats = user.setdefault("stats", {})
+        self._reset_daily_counters(user)
+
+        kcal = int(pending_cal.get("kcal") or 0)
+        item = str(pending_cal.get("item") or "מנה")
+        is_drink = bool(pending_cal.get("is_drink"))
+
+        current_cal = int(stats.get("calories_today") or 0)
+        new_cal = min(current_cal + kcal, MAX_DAILY_CALORIES)
+        stats["calories_today"] = new_cal
+
+        food_log = stats.setdefault("food_log", [])
+        food_log.append(
+            {
+                "item": item,
+                "kcal": kcal,
+                "is_drink": is_drink,
+                "time": dt_util.now().strftime("%H:%M"),
+            }
+        )
+        del food_log[:-MAX_FOOD_LOG_ITEMS]
+
+        user["pending_calorie_add"] = None
+        self._touch_checkin(user)
+        self.runtime.store.touch(user)
+
+        targets = targets_for(user.get("profile") or {})
+        target_cal = targets.get("calories")
+
+        emoji = "🥤" if is_drink else "🍽️"
+        lines = [
+            f"✅ {emoji} נרשם: *{item}* ({kcal} קק\"ל)!",
+        ]
+        if target_cal:
+            bar = format_progress_bar(new_cal, target_cal)
+            remaining = max(0, target_cal - new_cal)
+            lines.extend(
+                [
+                    f"📊 סה\"כ היום: *{new_cal}* מתוך *{target_cal}* קק\"ל.",
+                    f"   {bar}",
+                ]
+            )
+            if new_cal > target_cal:
+                lines.append(f"⚠️ שים לב: חרגת ב-{new_cal - target_cal} קק\"ל מהיעד היומי.")
+            else:
+                lines.append(f"נותרו עוד כ-{remaining} קק\"ל להיום.")
+        else:
+            lines.append(f"📊 סה\"כ קלוריות היום: *{new_cal}* קק\"ל.")
+
+        await self.async_send(user, "\n".join(lines), target)
+
+    def _calories_text(self, user: dict[str, Any]) -> str:
+        """Format the daily calorie & drinks summary."""
+        self._reset_daily_counters(user)
+        stats = user.get("stats") or {}
+        targets = targets_for(user.get("profile") or {})
+        target_cal = targets.get("calories")
+        calories_today = int(stats.get("calories_today") or 0)
+        food_log = list(stats.get("food_log") or [])
+
+        lines = ["📊 *מעקב קלוריות ושתייה יומי*"]
+        if target_cal:
+            bar = format_progress_bar(calories_today, target_cal)
+            lines.extend(
+                [
+                    f"🎯 יעד יומי: {target_cal} קק\"ל",
+                    f"🔥 נצרכו היום: {calories_today} קק\"ל",
+                    f"   {bar}",
+                ]
+            )
+        else:
+            lines.append(f"🔥 נצרכו היום: {calories_today} קק\"ל")
+
+        if food_log:
+            lines.append("\n📋 *פירוט להיום:*")
+            for entry in food_log:
+                time_str = entry.get("time") or ""
+                item_str = entry.get("item") or ""
+                kcal_val = entry.get("kcal") or 0
+                icon = "🥤" if entry.get("is_drink") else "🍽️"
+                lines.append(f"• {icon} {item_str} — {kcal_val} קק\"ל ({time_str})")
+        else:
+            lines.append("\nלא נרשמו מנות היום. שלחו תמונה של צלחת או כוס כדי לספור! 📸")
+
+        return "\n".join(lines)
 
     # ------------------------------------------------------------------
     # Commands
@@ -778,6 +1053,10 @@ class TrainerAgent:
         if stats.get("messages_date") != today:
             stats["messages_date"] = today
             stats["messages_today"] = 0
+        if stats.get("calories_date") != today:
+            stats["calories_date"] = today
+            stats["calories_today"] = 0
+            stats["food_log"] = []
 
     def _touch_checkin(self, user: dict[str, Any]) -> None:
         today = dt_util.now().date()
@@ -818,6 +1097,8 @@ class TrainerAgent:
 
         water_done = int(stats.get("water_ml_today") or 0)
         water_target = int(targets.get("water_ml") or 2500)
+        cal_done = int(stats.get("calories_today") or 0)
+        cal_target = targets.get("calories")
         today = dt_util.now().date()
         week_start = (today - timedelta(days=6)).isoformat()
         week_workouts = len(
@@ -831,6 +1112,15 @@ class TrainerAgent:
         ]
         if targets.get("bmi"):
             lines.append(f"📊 BMI: {targets['bmi']} — {targets['bmi_category']}")
+        if cal_target:
+            lines.extend(
+                [
+                    f"🔥 קלוריות היום: {cal_done}/{cal_target} קק\"ל",
+                    f"   {format_progress_bar(cal_done, cal_target)}",
+                ]
+            )
+        elif cal_done:
+            lines.append(f"🔥 קלוריות היום: {cal_done} קק\"ל")
         lines.extend(
             [
                 f"💧 מים היום: {round(water_done / 1000.0, 1)}/{round(water_target / 1000.0, 1)} ליטר",

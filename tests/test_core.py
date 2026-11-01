@@ -34,6 +34,7 @@ from core.plan import (  # noqa: E402
     normalise_plan,
     plan_public_view,
 )
+from core.prompts import calorie_analysis_prompt  # noqa: E402
 from core.text import (  # noqa: E402
     detect_command,
     format_progress_bar,
@@ -123,6 +124,9 @@ class ParsingTests(unittest.TestCase):
         self.assertEqual(detect_command("איפוס"), "reset")
         self.assertEqual(detect_command("ביטול"), "cancel")
         self.assertEqual(detect_command("סטטוס"), "status")
+        self.assertEqual(detect_command("קלוריות"), "calories")
+        self.assertEqual(detect_command("כמה אכלתי"), "calories")
+        self.assertEqual(detect_command("calories"), "calories")
         self.assertIsNone(detect_command("מה שלומך?"))
 
     def test_meal_log_is_conversational(self):
@@ -298,6 +302,9 @@ class ModelTests(unittest.TestCase):
         self.assertEqual(user["status"], "onboarding")
         self.assertEqual(user["onboarding_step"], "goal")
         self.assertFalse(user["pending_reset"])
+        self.assertIsNone(user["pending_calorie_add"])
+        self.assertEqual(user["stats"]["calories_today"], 0)
+        self.assertEqual(user["stats"]["food_log"], [])
 
     def test_ensure_user_shape(self):
         user = {"phone": "972501234567", "profile": {"weight_kg": 80}}
@@ -306,6 +313,20 @@ class ModelTests(unittest.TestCase):
         self.assertIn("height_cm", user["profile"])
         self.assertEqual(user["reminders"], {"daily": None, "water": None, "workout": None})
         self.assertEqual(user["stats"]["water_ml_today"], 0)
+        self.assertEqual(user["stats"]["calories_today"], 0)
+        self.assertIn("food_log", user["stats"])
+        self.assertIn("pending_calorie_add", user)
+
+
+class CaloriePromptTests(unittest.TestCase):
+    def test_calorie_prompt_structure(self):
+        user = make_user(weight_kg=75, height_cm=175)
+        system, prompt = calorie_analysis_prompt(user, caption="סלט יווני וקפה")
+        self.assertIn("דיאטן", system)
+        self.assertIn("JSON", system)
+        self.assertIn("דני", prompt)
+        self.assertIn("סלט יווני וקפה", prompt)
+        self.assertIn("is_drink", prompt)
 
 
 if __name__ == "__main__":
