@@ -38,7 +38,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     async_register_views(hass)
-    async_register_services(hass)
+    await async_register_services(hass)
     await async_register_panel(hass)
     _update_whatsapp_issue(hass, runtime)
 
