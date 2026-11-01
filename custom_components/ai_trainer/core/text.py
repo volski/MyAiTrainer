@@ -175,6 +175,94 @@ def parse_goal(text: Any) -> tuple[str | None, str]:
     return None, str(text).strip()
 
 
+def is_affirmative(text: Any) -> bool:
+    """Return True if text expresses confirmation (Hebrew or English)."""
+    raw = str(text or "").strip()
+    if any(emoji in raw for emoji in ("👍", "👌", "✔️", "✅")):
+        return True
+    val = normalise_hebrew(raw)
+    val = re.sub(r"[^\w\s]", "", val).strip()
+    if not val:
+        return False
+    affirmative_words = {
+        "כן", "מאשר", "מאשרת", "אישור", "תוסיף", "הוסף",
+        "תרשום", "רשום", "סבבה", "בטח", "אחלה", "מעולה",
+        "טוב", "אוקי", "יאללה", "yes", "y", "ok", "okay",
+        "sure", "yep", "yeah", "1", "נכון", "בכיף",
+    }
+    if val in affirmative_words:
+        return True
+    first_word = val.split()[0]
+    return first_word in affirmative_words
+
+
+def is_negative(text: Any) -> bool:
+    """Return True if text expresses refusal or cancellation."""
+    raw = str(text or "").strip()
+    if any(emoji in raw for emoji in ("👎", "❌", "✖️")):
+        return True
+    val = normalise_hebrew(raw)
+    val = re.sub(r"[^\w\s]", "", val).strip()
+    if not val:
+        return False
+    negative_words = {
+        "לא", "בטל", "ביטול", "אל", "ותר", "וותר",
+        "no", "n", "cancel", "stop", "nope", "0", "עזוב", "עזבי",
+    }
+    if val in negative_words:
+        return True
+    first_word = val.split()[0]
+    return first_word in negative_words
+
+
+def parse_calories_entry(text: Any) -> tuple[int | None, str, bool]:
+    """Parse calories, item description, and is_drink flag from text.
+
+    Returns (kcal, item, is_drink) or (None, "", False) if not matched.
+    """
+    raw = str(text or "").strip()
+    norm = normalise_hebrew(raw)
+    if not norm:
+        return None, "", False
+
+    # Check for drink indicators
+    is_drink = bool(re.search(r"(שתיתי|שתיה|שתייה|משקה|מיץ|קפה|שייק|תה|קולה|סודה|drink|drank)", norm))
+
+    # Pattern 1: אכלתי/שתיתי [item] [number] קלוריות / קק"ל
+    m = re.search(r"(?:אכלתי|שתיתי|ארוחה|מנה)\s+(.+?)\s+(\d{1,4})\s*(?:קלוריות|קקל|קק\"ל|קק״ל|kcal)", norm)
+    if m:
+        kcal = int(m.group(2))
+        item = m.group(1).strip()
+        if 1 <= kcal <= 10000 and item:
+            return kcal, item, is_drink
+
+    # Pattern 2: הוסף/רשום/ספור [number] קלוריות [item optional]
+    m = re.search(r"(?:הוסף|הוספתי|תרשום|רשום|ספור|ספר|\+)\s*(\d{1,4})\s*(?:קלוריות|קקל|קק\"ל|קק״ל|kcal)(?:\s+(?:על|עבור|של)?\s*(.+))?", norm)
+    if m:
+        kcal = int(m.group(1))
+        item = (m.group(2) or "").strip() or ("משקה" if is_drink else "מנה")
+        if 1 <= kcal <= 10000:
+            return kcal, item, is_drink
+
+    # Pattern 3: [number] קלוריות [item optional]
+    m = re.search(r"^(\d{1,4})\s*(?:קלוריות|קקל|קק\"ל|קק״ל|kcal)(?:\s+(?:על|עבור|של)?\s*(.+))?$", norm)
+    if m:
+        kcal = int(m.group(1))
+        item = (m.group(2) or "").strip() or ("משקה" if is_drink else "מנה")
+        if 1 <= kcal <= 10000:
+            return kcal, item, is_drink
+
+    # Pattern 4: אכלתי/שתיתי [item] [number] (e.g. "אכלתי טוסט 300")
+    m = re.search(r"(?:אכלתי|שתיתי)\s+(.+?)\s+(\d{2,4})$", norm)
+    if m:
+        kcal = int(m.group(2))
+        item = m.group(1).strip()
+        if 20 <= kcal <= 5000 and item:
+            return kcal, item, is_drink
+
+    return None, "", False
+
+
 def detect_command(text: Any) -> str | None:
     """Return a command key for a message, or ``None`` for normal chat."""
     value = normalise_hebrew(text)

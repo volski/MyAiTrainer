@@ -56,6 +56,8 @@ def new_stats(today: str) -> dict[str, Any]:
         "last_ai_at": None,
         "calories_today": 0,
         "calories_date": today,
+        "drinks_today": 0,
+        "drinks_date": today,
         "food_log": [],
     }
 

@@ -69,6 +69,10 @@ class GoogleProvider(AIProvider):
             raise AIError("ספק ה-AI לא מוגדר במלואו (חסר מפתח או מודל).")
 
         b64 = base64.b64encode(image_bytes).decode("ascii")
+        clean_mime = (mime_type or "image/jpeg").lower()
+        if clean_mime == "image/jpg":
+            clean_mime = "image/jpeg"
+
         generation_config: dict[str, Any] = {
             "temperature": self.temperature,
             "maxOutputTokens": self.max_tokens,
@@ -82,13 +86,13 @@ class GoogleProvider(AIProvider):
                 {
                     "role": "user",
                     "parts": [
-                        {"text": prompt},
                         {
-                            "inline_data": {
-                                "mime_type": mime_type or "image/jpeg",
+                            "inlineData": {
+                                "mimeType": clean_mime,
                                 "data": b64,
                             }
                         },
+                        {"text": prompt},
                     ],
                 }
             ],

@@ -12,6 +12,7 @@ This module owns the conversation logic:
 from __future__ import annotations
 
 import asyncio
+import base64
 import logging
 import os
 from collections import deque
@@ -50,7 +51,10 @@ from .core.text import (
     clean_name,
     detect_command,
     format_progress_bar,
+    is_affirmative,
+    is_negative,
     normalise_hebrew,
+    parse_calories_entry,
     parse_water_cups,
     parse_weight_kg,
 )
@@ -64,9 +68,10 @@ HELP_TEXT = (
     "*הפקודות שלי* 🤖\n"
     "• *תפריט* / *תוכנית* — התוכנית של היום\n"
     "• *שתיתי 2* — תיעוד כוסות מים\n"
-    "• *אכלתי ...* — משוב תזונתי\n"
     "• 📸 *שלחו תמונת אוכל/שתייה* — ספירת קלוריות\n"
-    "• *קלוריות* — סיכום הקלוריות של היום\n"
+    "• *הוסף 400 קלוריות* — רישום קלוריות מהיר\n"
+    "• *קלוריות* — סיכום הקלוריות והשתייה להיום\n"
+    "• *אכלתי ...* — משוב תזונתי\n"
     "• *סיימתי אימון* — סימון אימון\n"
     "• *שקלתי 77.5* — עדכון משקל\n"
     "• *סטטוס* — ההתקדמות שלך\n"
@@ -207,6 +212,41 @@ class TrainerAgent:
             fallback="חבר" if not is_group else "קבוצה",
         )
 
+        media_url = ""
+        for k in ("media_url", "media_path", "attachment", "url", "file", "file_path", "image", "media"):
+            val = data.get(k)
+            if isinstance(val, str) and val.strip():
+                media_url = val.strip()
+                break
+        if not media_url and isinstance(raw, dict):
+            for k in ("media_url", "media_path", "attachment", "url", "file", "file_path", "image", "media"):
+                val = raw.get(k)
+                if isinstance(val, str) and val.strip():
+                    media_url = val.strip()
+                    break
+
+        media_type = ""
+        for k in ("media_type", "media_mimetype", "mimetype", "mime_type"):
+            val = data.get(k)
+            if isinstance(val, str) and val.strip():
+                media_type = val.strip().lower()
+                break
+        if not media_type and isinstance(raw, dict):
+            for k in ("media_type", "media_mimetype", "mimetype", "mime_type"):
+                val = raw.get(k)
+                if isinstance(val, str) and val.strip():
+                    media_type = val.strip().lower()
+                    break
+
+        if msg_type in {"image", "photo", "picture"} and not media_type:
+            media_type = "image/jpeg"
+        elif media_url and any(media_url.lower().endswith(ext) for ext in (".jpg", ".jpeg")):
+            media_type = "image/jpeg"
+        elif media_url and media_url.lower().endswith(".png"):
+            media_type = "image/png"
+        elif media_url and media_url.lower().endswith(".webp"):
+            media_type = "image/webp"
+
         await self.async_handle_message(
             phone=phone,
             target=target,
@@ -214,8 +254,8 @@ class TrainerAgent:
             text=content,
             is_group=is_group,
             message_id=message_id,
-            media_url=str(data.get("media_url") or data.get("media_path") or "").strip(),
-            media_type=str(data.get("media_type") or data.get("media_mimetype") or "").strip().lower(),
+            media_url=media_url,
+            media_type=media_type,
         )
 
     # ------------------------------------------------------------------
@@ -296,8 +336,15 @@ class TrainerAgent:
             user["name"] = name
         self._reset_daily_counters(user)
 
-        # Image with no text: try calorie analysis if it looks like food.
-        has_image = bool(media_url and (media_type or "").startswith("image"))
+        # Determine whether this event carries an image.
+        has_image = bool(
+            media_url
+            and (
+                (media_type or "").startswith("image")
+                or any(media_url.lower().endswith(ext) for ext in (".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".heif"))
+                or not media_type
+            )
+        )
         if not text and not has_image:
             await self.async_send(user, MEDIA_TEXT, target)
             return
@@ -312,7 +359,7 @@ class TrainerAgent:
 
         # Two-step reset confirmation.
         if user.get("pending_reset"):
-            if normalise_hebrew(text) in {"כן", "מאשר", "מאשרת", "yes", "confirm", "y"}:
+            if is_affirmative(text):
                 await self._async_reset_user(user, target)
             else:
                 user["pending_reset"] = False
@@ -322,7 +369,7 @@ class TrainerAgent:
 
         # Two-step delete confirmation.
         if user.get("pending_delete"):
-            if normalise_hebrew(text) in {"כן", "מאשר", "מאשרת", "yes", "confirm", "y"}:
+            if is_affirmative(text):
                 await self._async_delete_user(user, target)
             else:
                 user["pending_delete"] = False
@@ -332,17 +379,16 @@ class TrainerAgent:
 
         # Calorie confirmation: add analysed food/drink to daily count.
         pending_cal = user.get("pending_calorie_add")
-        if isinstance(pending_cal, dict) and pending_cal.get("kcal"):
-            lower = normalise_hebrew(text)
-            if lower in {"כן", "מאשר", "מאשרת", "yes", "confirm", "y", "תוסיף", "הוסף"}:
+        if isinstance(pending_cal, dict) and "kcal" in pending_cal:
+            if is_affirmative(text):
                 await self._async_confirm_calories(user, pending_cal, target)
                 return
-            elif lower in {"לא", "no", "ביטול", "cancel", "n"}:
+            elif is_negative(text):
                 user["pending_calorie_add"] = None
                 store.touch(user)
-                await self.async_send(user, "בוטל — לא נרשם 🙂", target)
+                await self.async_send(user, "בוטל — המנה לא נוספה לספירה 🙂", target)
                 return
-            # Any other text clears the pending and falls through to normal handling.
+            # Any other message clears the pending confirmation and continues.
             user["pending_calorie_add"] = None
             store.touch(user)
 
@@ -385,6 +431,14 @@ class TrainerAgent:
             await self.async_send(user, str(result["reply"]), target)
             if result["completed"]:
                 await self.async_send_plan(user, target=target, force=True)
+            return
+
+        # Direct text calorie entry (e.g. "הוסף 400 קלוריות", "אכלתי סלט 300 קלוריות", "+250 קלוריות")
+        cal_kcal, cal_item, cal_is_drink = parse_calories_entry(text)
+        if cal_kcal is not None:
+            await self._async_log_manual_calories(
+                user, cal_kcal, cal_item, cal_is_drink, target
+            )
             return
 
         command = detect_command(text)
@@ -456,8 +510,18 @@ class TrainerAgent:
         if not url:
             return None
 
+        # Check inline base64 data URI
+        if url.startswith("data:image/") and ";base64," in url:
+            try:
+                b64_part = url.split(";base64,", 1)[1]
+                data = base64.b64decode(b64_part)
+                return data if len(data) <= MAX_IMAGE_BYTES else None
+            except Exception as err:
+                _LOGGER.warning("Failed to decode base64 image data: %s", err)
+                return None
+
         # Check local absolute path
-        if os.path.isabs(url) and os.path.exists(url):
+        if os.path.isabs(url) and os.path.exists(url) and os.path.isfile(url):
             try:
                 data = await asyncio.to_thread(self._read_file_bytes, url, MAX_IMAGE_BYTES)
                 return data if len(data) <= MAX_IMAGE_BYTES else None
@@ -480,15 +544,36 @@ class TrainerAgent:
                 _LOGGER.warning("Failed to download media from %s: %s", url, err)
                 return None
 
-        # Check relative paths in Home Assistant media or config directories
-        for base in (self.runtime.hass.config.path("media"), self.runtime.hass.config.config_dir):
-            candidate = os.path.join(base, url.lstrip("/\\"))
-            if os.path.exists(candidate):
+        # Check candidate locations in Home Assistant media or config directories
+        clean_rel = url.lstrip("/\\")
+        candidates = [url]
+        try:
+            media_path = self.runtime.hass.config.path("media")
+            candidates.append(os.path.join(media_path, clean_rel))
+            if clean_rel.startswith("media/"):
+                candidates.append(os.path.join(media_path, clean_rel[6:]))
+        except Exception:
+            pass
+
+        try:
+            config_dir = self.runtime.hass.config.config_dir
+            candidates.append(os.path.join(config_dir, clean_rel))
+            candidates.append(os.path.join(config_dir, "www", clean_rel))
+            if clean_rel.startswith("local/"):
+                candidates.append(os.path.join(config_dir, "www", clean_rel[6:]))
+            if clean_rel.startswith("media/"):
+                candidates.append(os.path.join(config_dir, clean_rel))
+        except Exception:
+            pass
+
+        for cand in candidates:
+            if cand and os.path.exists(cand) and os.path.isfile(cand):
                 try:
-                    data = await asyncio.to_thread(self._read_file_bytes, candidate, MAX_IMAGE_BYTES)
-                    return data if len(data) <= MAX_IMAGE_BYTES else None
+                    data = await asyncio.to_thread(self._read_file_bytes, cand, MAX_IMAGE_BYTES)
+                    if data and len(data) <= MAX_IMAGE_BYTES:
+                        return data
                 except Exception as err:
-                    _LOGGER.warning("Failed to read media candidate %s: %s", candidate, err)
+                    _LOGGER.warning("Failed to read media candidate %s: %s", cand, err)
 
         return None
 
@@ -595,13 +680,15 @@ class TrainerAgent:
         stats = user.setdefault("stats", {})
         self._reset_daily_counters(user)
 
-        kcal = int(pending_cal.get("kcal") or 0)
-        item = str(pending_cal.get("item") or "מנה")
+        kcal = max(0, int(pending_cal.get("kcal") or 0))
+        item = str(pending_cal.get("item") or "מנה").strip()
         is_drink = bool(pending_cal.get("is_drink"))
 
         current_cal = int(stats.get("calories_today") or 0)
         new_cal = min(current_cal + kcal, MAX_DAILY_CALORIES)
         stats["calories_today"] = new_cal
+        if is_drink:
+            stats["drinks_today"] = int(stats.get("drinks_today") or 0) + 1
 
         food_log = stats.setdefault("food_log", [])
         food_log.append(
@@ -643,6 +730,66 @@ class TrainerAgent:
 
         await self.async_send(user, "\n".join(lines), target)
 
+    async def _async_log_manual_calories(
+        self,
+        user: dict[str, Any],
+        kcal: int,
+        item: str,
+        is_drink: bool,
+        target: str,
+    ) -> None:
+        """Directly log calories from a text command (e.g. 'הוסף 400 קלוריות')."""
+        stats = user.setdefault("stats", {})
+        self._reset_daily_counters(user)
+
+        kcal = max(0, int(kcal))
+        item = item.strip() or ("משקה" if is_drink else "מנה")
+
+        current_cal = int(stats.get("calories_today") or 0)
+        new_cal = min(current_cal + kcal, MAX_DAILY_CALORIES)
+        stats["calories_today"] = new_cal
+        if is_drink:
+            stats["drinks_today"] = int(stats.get("drinks_today") or 0) + 1
+
+        food_log = stats.setdefault("food_log", [])
+        food_log.append(
+            {
+                "item": item,
+                "kcal": kcal,
+                "is_drink": is_drink,
+                "time": dt_util.now().strftime("%H:%M"),
+            }
+        )
+        del food_log[:-MAX_FOOD_LOG_ITEMS]
+
+        self._touch_checkin(user)
+        self.runtime.store.touch(user)
+
+        targets = targets_for(user.get("profile") or {})
+        target_cal = targets.get("calories")
+
+        emoji = "🥤" if is_drink else "🍽️"
+        lines = [
+            f"✅ {emoji} נרשם: *{item}* ({kcal} קק\"ל)!",
+        ]
+        if target_cal:
+            bar = format_progress_bar(new_cal, target_cal)
+            remaining = max(0, target_cal - new_cal)
+            lines.extend(
+                [
+                    f"📊 סה\"כ היום: *{new_cal}* מתוך *{target_cal}* קק\"ל.",
+                    f"   {bar}",
+                ]
+            )
+            if new_cal > target_cal:
+                lines.append(f"⚠️ שים לב: חרגת ב-{new_cal - target_cal} קק\"ל מהיעד היומי.")
+            else:
+                lines.append(f"נותרו עוד כ-{remaining} קק\"ל להיום.")
+        else:
+            lines.append(f"📊 סה\"כ קלוריות היום: *{new_cal}* קק\"ל.")
+
+        await self.async_send(user, "\n".join(lines), target)
+
     def _calories_text(self, user: dict[str, Any]) -> str:
         """Format the daily calorie & drinks summary."""
         self._reset_daily_counters(user)
@@ -650,6 +797,7 @@ class TrainerAgent:
         targets = targets_for(user.get("profile") or {})
         target_cal = targets.get("calories")
         calories_today = int(stats.get("calories_today") or 0)
+        drinks_today = int(stats.get("drinks_today") or 0)
         food_log = list(stats.get("food_log") or [])
 
         lines = ["📊 *מעקב קלוריות ושתייה יומי*"]
@@ -665,6 +813,9 @@ class TrainerAgent:
         else:
             lines.append(f"🔥 נצרכו היום: {calories_today} קק\"ל")
 
+        if drinks_today > 0:
+            lines.append(f"🥤 משקאות שנרשמו היום: {drinks_today}")
+
         if food_log:
             lines.append("\n📋 *פירוט להיום:*")
             for entry in food_log:
@@ -674,7 +825,7 @@ class TrainerAgent:
                 icon = "🥤" if entry.get("is_drink") else "🍽️"
                 lines.append(f"• {icon} {item_str} — {kcal_val} קק\"ל ({time_str})")
         else:
-            lines.append("\nלא נרשמו מנות היום. שלחו תמונה של צלחת או כוס כדי לספור! 📸")
+            lines.append("\nלא נרשמו מנות היום. שלחו תמונה 📸 או כתבו למשל *הוסף 400 קלוריות*.")
 
         return "\n".join(lines)
 
@@ -1056,6 +1207,9 @@ class TrainerAgent:
             stats["calories_date"] = today
             stats["calories_today"] = 0
             stats["food_log"] = []
+        if stats.get("drinks_date") != today:
+            stats["drinks_date"] = today
+            stats["drinks_today"] = 0
 
     def _touch_checkin(self, user: dict[str, Any]) -> None:
         today = dt_util.now().date()

@@ -250,6 +250,7 @@ class TrainerRuntime:
             "calories_percent": (
                 int(round(cal_done / cal_target * 100)) if cal_target else 0
             ),
+            "drinks_today": int(stats.get("drinks_today") or 0),
             "food_log": list(stats.get("food_log") or []),
             "protein_g": targets.get("protein_g"),
             "water_l": targets.get("water_l"),

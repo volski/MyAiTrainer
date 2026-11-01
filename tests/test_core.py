@@ -38,6 +38,9 @@ from core.prompts import calorie_analysis_prompt  # noqa: E402
 from core.text import (  # noqa: E402
     detect_command,
     format_progress_bar,
+    is_affirmative,
+    is_negative,
+    parse_calories_entry,
     parse_goal,
     parse_height_cm,
     parse_water_cups,
@@ -131,6 +134,50 @@ class ParsingTests(unittest.TestCase):
 
     def test_meal_log_is_conversational(self):
         self.assertIsNone(detect_command("אכלתי חביתה עם 2 כוסות מים"))
+
+    def test_affirmative_negative(self):
+        self.assertTrue(is_affirmative("כן"))
+        self.assertTrue(is_affirmative("כן!"))
+        self.assertTrue(is_affirmative("כן תודה"))
+        self.assertTrue(is_affirmative("כן תוסיף"))
+        self.assertTrue(is_affirmative("תוסיף"))
+        self.assertTrue(is_affirmative("סבבה"))
+        self.assertTrue(is_affirmative("בטח"))
+        self.assertTrue(is_affirmative("👍"))
+        self.assertTrue(is_affirmative("yes"))
+        self.assertFalse(is_affirmative("לא"))
+        self.assertFalse(is_affirmative("שלום"))
+
+        self.assertTrue(is_negative("לא"))
+        self.assertTrue(is_negative("לא!"))
+        self.assertTrue(is_negative("לא תודה"))
+        self.assertTrue(is_negative("ביטול"))
+        self.assertTrue(is_negative("אל תוסיף"))
+        self.assertTrue(is_negative("👎"))
+        self.assertTrue(is_negative("no"))
+        self.assertFalse(is_negative("כן"))
+
+    def test_parse_calories_entry(self):
+        kcal, item, is_drink = parse_calories_entry("הוסף 400 קלוריות")
+        self.assertEqual(kcal, 400)
+        self.assertFalse(is_drink)
+
+        kcal, item, is_drink = parse_calories_entry("הוסף 250 קלוריות שייק חלבון")
+        self.assertEqual(kcal, 250)
+        self.assertTrue(is_drink)
+
+        kcal, item, is_drink = parse_calories_entry("אכלתי שקשוקה 450 קלוריות")
+        self.assertEqual(kcal, 450)
+        self.assertEqual(item, "שקשוקה")
+
+        kcal, item, is_drink = parse_calories_entry("שתיתי קפה 80 קק\"ל")
+        self.assertEqual(kcal, 80)
+        self.assertTrue(is_drink)
+
+        kcal, item, is_drink = parse_calories_entry("300 קלוריות")
+        self.assertEqual(kcal, 300)
+
+        self.assertIsNone(parse_calories_entry("מה נשמע?")[0])
 
     def test_progress_bar(self):
         self.assertEqual(format_progress_bar(5, 10), "▰▰▰▰▰▱▱▱▱▱ 50%")
