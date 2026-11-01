@@ -77,7 +77,10 @@ NO_AI_TEXT = (
 
 MEDIA_TEXT = "כרגע אני מבין הודעות טקסט בלבד 🙂 כתבו לי במילים ואעזור."
 
-ACCEPTED_EVENT_TYPES = {"chat", "text", "button_reply", "list_reply", "poll_update"}
+ACCEPTED_EVENT_TYPES = {
+    "chat", "text", "message", "incoming", "received", "button_reply",
+    "list_reply", "poll_update", "image", "audio", "video", "document",
+}
 
 
 class TrainerAgent:
@@ -92,15 +95,41 @@ class TrainerAgent:
     # ------------------------------------------------------------------
     async def async_handle_event(self, data: dict[str, Any]) -> None:
         """Validate a WhatsApp event and dispatch it."""
+        self.runtime.logs.info(
+            "whatsapp_event", f"אירוע שהתקבל: {list((data or {}).keys())}"
+        )
         settings = self.runtime.settings
         msg_type = str(data.get("type") or "chat").lower()
+        # Be lenient: if an unknown/missing type carries a payload, treat as chat.
         if msg_type not in ACCEPTED_EVENT_TYPES:
-            return
+            if msg_type and msg_type not in {"", "none", "null"}:
+                # Only drop clearly non-message control events.
+                if msg_type in {
+                    "config_updated", "state_changed", "moderation_updated",
+                    "telegram_updated", "presence", "receipt", "read",
+                }:
+                    return
+            msg_type = "chat"
 
-        sender = str(data.get("sender") or "")
-        sender_number = str(data.get("sender_number") or "")
-        raw = data.get("raw") or {}
-        remote_jid = str((raw.get("key") or {}).get("remoteJid") or "")
+        sender = str(
+            data.get("sender") or data.get("from") or data.get("chat_id") or ""
+        )
+        sender_number = str(
+            data.get("sender_number")
+            or data.get("person_number")
+            or data.get("phone")
+            or data.get("number")
+            or ""
+        )
+        raw = data.get("raw") or data.get("message") or {}
+        if not isinstance(raw, dict):
+            raw = {}
+        remote_jid = str(
+            (raw.get("key") or {}).get("remoteJid")
+            or data.get("remote_jid")
+            or data.get("remoteJid")
+            or ""
+        )
         is_group = (
             "@g.us" in sender
             or "@g.us" in remote_jid
@@ -116,8 +145,13 @@ class TrainerAgent:
             return
 
         phone_source = remote_jid if is_group else (sender_number or sender)
+        if not phone_source and isinstance(raw, dict):
+            phone_source = str((raw.get("key") or {}).get("remoteJid") or "")
         phone = normalize_phone(phone_source)
         if not phone or phone in {"me", "0"}:
+            self.runtime.logs.warning(
+                "ignored", f"הודעה ללא מספר שולח: {data!r}"[:300]
+            )
             return
 
         allowed = [
@@ -137,7 +171,19 @@ class TrainerAgent:
                 return
             self._seen_ids.appendleft(message_id)
 
-        content = str(data.get("content") or "").strip()
+        content = ""
+        for key in ("content", "message", "text", "body", "conversation", "caption"):
+            value = data.get(key)
+            if isinstance(value, str) and value.strip():
+                content = value.strip()
+                break
+            if isinstance(value, dict):
+                for sub in ("text", "body", "conversation", "caption", "content"):
+                    if isinstance(value.get(sub), str) and value[sub].strip():
+                        content = value[sub].strip()
+                        break
+            if content:
+                break
         if not content:
             content = str(data.get("selected_id") or "").strip()
         if not content:
