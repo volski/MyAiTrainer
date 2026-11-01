@@ -1,0 +1,14 @@
+{
+  "domain": "ai_trainer",
+  "name": "AI Trainer",
+  "version": "1.0.0",
+  "config_flow": true,
+  "dependencies": ["http", "frontend", "panel_custom"],
+  "after_dependencies": ["whatsapp"],
+  "documentation": "https://github.com/your-username/MyAiTrainer",
+  "issue_tracker": "https://github.com/your-username/MyAiTrainer/issues",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "requirements": [],
+  "single_config_entry": true
+}

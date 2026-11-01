@@ -1,0 +1,148 @@
+{
+  "title": "מאמן AI",
+  "config": {
+    "step": {
+      "user": {
+        "title": "מאמן AI",
+        "description": "מאמן תזונה, שתייה ואימונים בוואטסאפ, בעברית. הודעה נכנסת מהבוט יוצרת משתמש חדש אוטומטית ומתחילה תהליך היכרות קצר.",
+        "data": {
+          "provider": "ספק AI",
+          "api_key": "מפתח API",
+          "model": "מודל",
+          "whatsapp_account": "חשבון וואטסאפ",
+          "daily_time": "שעת תוכנית יומית (HH:MM)"
+        },
+        "data_description": {
+          "api_key": "אופציונלי. אפשר להוסיף או לשנות מאוחר יותר בלוח הבקרה של מאמן AI.",
+          "model": "השאירו ריק כדי להשתמש במודל ברירת המחדל של הספק.",
+          "whatsapp_account": "נדרש רק אם מוגדרים כמה חשבונות וואטסאפ.",
+          "daily_time": "שעה מקומית של Home Assistant, למשל 08:00."
+        }
+      }
+    },
+    "error": {
+      "invalid_time": "השעה חייבת להיות בפורמט HH:MM (למשל 08:00).",
+      "invalid_provider": "ספק AI לא מוכר."
+    },
+    "abort": {
+      "already_configured": "מאמן AI כבר מוגדר.",
+      "single_instance_allowed": "מאמן AI כבר מוגדר."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "הגדרות מאמן AI",
+        "description": "בחרו קטע לעריכה. השינויים נשמרים ב-config entry.",
+        "menu_options": {
+          "ai": "ספק AI",
+          "whatsapp": "וואטסאפ",
+          "schedule": "לוח זמנים",
+          "limits": "מגבלות",
+          "prompt": "אופי המאמן",
+          "done": "שמור וסגור"
+        }
+      },
+      "ai": {
+        "title": "ספק AI",
+        "description": "בחרו ספק, מודל ומפתח API. המפתח נשמר ב-config entry של Home Assistant ולא מוצג שוב.",
+        "data": {
+          "provider": "ספק AI",
+          "model": "מודל",
+          "api_key": "מפתח API",
+          "clear_api_key": "מחק את המפתח השמור",
+          "base_url": "כתובת בסיס",
+          "temperature": "טמפרטורה",
+          "max_tokens": "מקסימום טוקנים בתשובה"
+        },
+        "data_description": {
+          "model": "השאירו ריק למודל ברירת המחדל. ב-Ollama כתבו שם מודל מקומי.",
+          "api_key": "השאירו ריק כדי לשמור על המפתח הנוכחי.",
+          "base_url": "עבור Ollama ושרתים תואמי OpenAI. לדוגמה: http://homeassistant.local:11434",
+          "temperature": "0 = ממוקד, 1 = יצירתי. 0.5–0.8 מתאים לאימון.",
+          "max_tokens": "אורך מקסימלי של תשובת AI אחת."
+        }
+      },
+      "whatsapp": {
+        "title": "וואטסאפ",
+        "description": "מאמן AI עובד דרך האינטגרציה FaserF/ha-whatsapp. השאירו את שירות השליחה כברירת מחדל אלא אם שיניתם אותו.",
+        "data": {
+          "whatsapp_service": "שירות שליחה",
+          "whatsapp_account": "חשבון וואטסאפ",
+          "allow_groups": "אפשר קבוצות",
+          "allowed_numbers": "מספרי טלפון מורשים"
+        },
+        "data_description": {
+          "whatsapp_service": "ברירת מחדל: whatsapp.send_message",
+          "allow_groups": "כשכבוי, הודעות מקבוצות מתעלמות.",
+          "allowed_numbers": "רשימת הרשאה אופציונלית. ריק = כל מספר מתקבל. מופרד בפסיקים עם קידומת מדינה."
+        }
+      },
+      "schedule": {
+        "title": "לוח זמנים",
+        "description": "כל השעות לפי אזור הזמן של Home Assistant.",
+        "data": {
+          "enable_daily": "שלח תוכנית יומית",
+          "daily_time": "שעת התוכנית היומית",
+          "enable_water": "שלח תזכורות שתייה",
+          "water_times": "שעות תזכורת שתייה",
+          "enable_workout": "שלח תזכורת אימון",
+          "workout_time": "שעת תזכורת אימון"
+        },
+        "data_description": {
+          "daily_time": "HH:MM, למשל 08:00",
+          "water_times": "רשימת HH:MM מופרדת בפסיקים. לדוגמה: 10:00, 13:00, 16:00, 19:00"
+        }
+      },
+      "limits": {
+        "title": "מגבלות",
+        "data": {
+          "max_users": "מקסימום משתמשים",
+          "min_ai_interval": "מינימום שניות בין קריאות AI"
+        },
+        "data_description": {
+          "max_users": "אנשי קשר חדשים מעל המגבלה יידחו.",
+          "min_ai_interval": "מחליק רצף הודעות. 1–3 שניות בדרך כלל מספיק."
+        }
+      },
+      "prompt": {
+        "title": "אופי המאמן",
+        "description": "המאמן תמיד מדבר עברית. השתמשו בהנחיות הנוספות לטון, העדפות אוכל או כללי בית.",
+        "data": {
+          "coach_name": "שם המאמן",
+          "system_prompt_extra": "הנחיות נוספות"
+        }
+      }
+    },
+    "error": {
+      "invalid_time": "השעה חייבת להיות בפורמט HH:MM.",
+      "invalid_times": "אחת השעות אינה בפורמט HH:MM תקין.",
+      "invalid_service": "השירות חייב להיות בצורה domain.service.",
+      "invalid_provider": "ספק AI לא מוכר."
+    }
+  },
+  "issues": {
+    "whatsapp_missing": {
+      "title": "נדרשת אינטגרציית וואטסאפ",
+      "description": "מאמן AI שולח הודעות דרך FaserF/ha-whatsapp. התקינו והגדירו את אינטגרציית הוואטסאפ, ואז הפעילו מחדש את מאמן AI. עד אז הבוט לא יכול לשלוח או לקבל הודעות."
+    }
+  },
+  "services": {
+    "send_daily_plan": {
+      "name": "שלח תוכנית יומית",
+      "description": "צור ושלח בוואטסאפ תוכנית יומית לאוכל, שתייה ואימון."
+    },
+    "send_message": {
+      "name": "שלח הודעה",
+      "description": "שלח הודעת וואטסאפ ידנית למשתמש רשום."
+    },
+    "ask": {
+      "name": "שאל את המאמן",
+      "description": "העבר הודעה בצינור המלא של הבוט כאילו המשתמש כתב אותה."
+    },
+    "reset_user": {
+      "name": "אפס משתמש",
+      "description": "מחק פרופיל והתקדמות של משתמש והתחל תהליך היכרות מחדש."
+    }
+  }
+}

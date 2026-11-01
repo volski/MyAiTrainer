@@ -1,0 +1,66 @@
+send_daily_plan:
+  name: Send daily plan
+  description: Generate today's food, water and workout plan and send it by WhatsApp.
+  fields:
+    phone:
+      name: Phone
+      description: Recipient phone number. Leave empty to send to every active user.
+      example: "972501234567"
+      selector:
+        text:
+    force:
+      name: Regenerate
+      description: Ignore the cached plan and ask the AI provider for a new plan.
+      default: false
+      selector:
+        boolean:
+
+send_message:
+  name: Send message
+  description: Send a manual WhatsApp message to a registered user without involving the AI.
+  fields:
+    phone:
+      name: Phone
+      description: Registered user phone number.
+      required: true
+      example: "972501234567"
+      selector:
+        text:
+    message:
+      name: Message
+      description: Text to send. WhatsApp formatting (*bold*, _italic_) is supported.
+      required: true
+      selector:
+        text:
+          multiline: true
+
+ask:
+  name: Ask the coach
+  description: Send a prompt through the full bot pipeline as if the user wrote it, including AI reply delivery.
+  fields:
+    phone:
+      name: Phone
+      description: Registered user phone number.
+      required: true
+      example: "972501234567"
+      selector:
+        text:
+    prompt:
+      name: Prompt
+      description: Text to process as an incoming user message.
+      required: true
+      selector:
+        text:
+          multiline: true
+
+reset_user:
+  name: Reset user
+  description: Clear a user's profile and progress, then restart onboarding.
+  fields:
+    phone:
+      name: Phone
+      description: Registered user phone number.
+      required: true
+      example: "972501234567"
+      selector:
+        text:

@@ -1,0 +1,59 @@
+"""Pure data helpers shared by the integration, the panel and the tests.
+
+Nothing in this package imports Home Assistant.  That keeps the business
+logic trivially testable and makes it safe to reuse from tools.
+"""
+
+from __future__ import annotations
+
+from .metrics import calculate_bmi, goal_label, targets_for
+from .models import new_profile, new_user, normalize_phone
+from .onboarding import (
+    NEXT_QUESTION,
+    apply_onboarding_answer,
+    onboarding_summary,
+    start_onboarding,
+)
+from .plan import (
+    compose_plan_message,
+    compose_water_reminder,
+    compose_workout_reminder,
+    fallback_plan,
+    normalise_plan,
+)
+from .text import (
+    detect_command,
+    format_progress_bar,
+    normalise_hebrew,
+    parse_goal,
+    parse_height_cm,
+    parse_water_cups,
+    parse_weight_kg,
+    weekday_he,
+)
+
+__all__ = [
+    "NEXT_QUESTION",
+    "apply_onboarding_answer",
+    "calculate_bmi",
+    "compose_plan_message",
+    "compose_water_reminder",
+    "compose_workout_reminder",
+    "detect_command",
+    "fallback_plan",
+    "format_progress_bar",
+    "goal_label",
+    "new_profile",
+    "new_user",
+    "normalise_plan",
+    "normalise_hebrew",
+    "normalize_phone",
+    "onboarding_summary",
+    "parse_goal",
+    "parse_height_cm",
+    "parse_water_cups",
+    "parse_weight_kg",
+    "start_onboarding",
+    "targets_for",
+    "weekday_he",
+]

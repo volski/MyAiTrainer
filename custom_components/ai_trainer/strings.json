@@ -1,0 +1,148 @@
+{
+  "title": "AI Trainer",
+  "config": {
+    "step": {
+      "user": {
+        "title": "AI Trainer",
+        "description": "A Hebrew WhatsApp coach for food, water and exercise. Messages received by the WhatsApp bot create users automatically and start onboarding.",
+        "data": {
+          "provider": "AI provider",
+          "api_key": "API key",
+          "model": "Model",
+          "whatsapp_account": "WhatsApp account",
+          "daily_time": "Daily plan time (HH:MM)"
+        },
+        "data_description": {
+          "api_key": "Optional. You can add or change it later in the AI Trainer panel.",
+          "model": "Leave empty to use the provider default.",
+          "whatsapp_account": "Only needed when several WhatsApp accounts are configured.",
+          "daily_time": "Local Home Assistant time, for example 08:00."
+        }
+      }
+    },
+    "error": {
+      "invalid_time": "Time must use HH:MM (for example 08:00).",
+      "invalid_provider": "Unknown AI provider."
+    },
+    "abort": {
+      "already_configured": "AI Trainer is already configured.",
+      "single_instance_allowed": "AI Trainer is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "AI Trainer settings",
+        "description": "Choose a section to edit. Changes are stored in the config entry.",
+        "menu_options": {
+          "ai": "AI provider",
+          "whatsapp": "WhatsApp",
+          "schedule": "Schedule",
+          "limits": "Limits",
+          "prompt": "Coach persona",
+          "done": "Save and close"
+        }
+      },
+      "ai": {
+        "title": "AI provider",
+        "description": "Select the provider, model and API key. The key is stored in the Home Assistant config entry and is never shown again.",
+        "data": {
+          "provider": "AI provider",
+          "model": "Model",
+          "api_key": "API key",
+          "clear_api_key": "Remove the saved API key",
+          "base_url": "Base URL",
+          "temperature": "Temperature",
+          "max_tokens": "Max output tokens"
+        },
+        "data_description": {
+          "model": "Leave empty to use the provider default. Ollama uses a local model name.",
+          "api_key": "Leave blank to keep the current key.",
+          "base_url": "For Ollama and OpenAI-compatible servers. Example: http://homeassistant.local:11434",
+          "temperature": "0 is focused, 1 is creative. 0.5-0.8 works well for coaching.",
+          "max_tokens": "Maximum length of one AI reply."
+        }
+      },
+      "whatsapp": {
+        "title": "WhatsApp",
+        "description": "AI Trainer uses the FaserF/ha-whatsapp integration. Keep the default service unless you renamed it.",
+        "data": {
+          "whatsapp_service": "Send service",
+          "whatsapp_account": "WhatsApp account",
+          "allow_groups": "Allow group chats",
+          "allowed_numbers": "Allowed phone numbers"
+        },
+        "data_description": {
+          "whatsapp_service": "Default: whatsapp.send_message",
+          "allow_groups": "When disabled, group messages are ignored.",
+          "allowed_numbers": "Optional allow-list. Leave empty to accept every number. Comma separated with country code."
+        }
+      },
+      "schedule": {
+        "title": "Schedule",
+        "description": "All times use the Home Assistant timezone.",
+        "data": {
+          "enable_daily": "Send a daily plan",
+          "daily_time": "Daily plan time",
+          "enable_water": "Send water reminders",
+          "water_times": "Water reminder times",
+          "enable_workout": "Send a workout reminder",
+          "workout_time": "Workout reminder time"
+        },
+        "data_description": {
+          "daily_time": "HH:MM, for example 08:00",
+          "water_times": "Comma separated HH:MM list. Example: 10:00, 13:00, 16:00, 19:00"
+        }
+      },
+      "limits": {
+        "title": "Limits",
+        "data": {
+          "max_users": "Maximum users",
+          "min_ai_interval": "Minimum seconds between AI calls"
+        },
+        "data_description": {
+          "max_users": "New WhatsApp contacts above this limit are rejected.",
+          "min_ai_interval": "Smooths bursts of messages. 1-3 seconds is usually enough."
+        }
+      },
+      "prompt": {
+        "title": "Coach persona",
+        "description": "The coach always speaks Hebrew. Use the extra instructions for tone, food preferences or house rules.",
+        "data": {
+          "coach_name": "Coach name",
+          "system_prompt_extra": "Extra instructions"
+        }
+      }
+    },
+    "error": {
+      "invalid_time": "Time must use HH:MM.",
+      "invalid_times": "One of the times is not valid HH:MM.",
+      "invalid_service": "Service must look like domain.service.",
+      "invalid_provider": "Unknown AI provider."
+    }
+  },
+  "issues": {
+    "whatsapp_missing": {
+      "title": "WhatsApp integration is required",
+      "description": "AI Trainer sends messages through FaserF/ha-whatsapp. Install and configure the WhatsApp integration, then reload AI Trainer. Until then the bot cannot send or receive messages."
+    }
+  },
+  "services": {
+    "send_daily_plan": {
+      "name": "Send daily plan",
+      "description": "Generate today's food, water and workout plan and send it by WhatsApp."
+    },
+    "send_message": {
+      "name": "Send message",
+      "description": "Send a manual WhatsApp message to a registered user."
+    },
+    "ask": {
+      "name": "Ask the coach",
+      "description": "Process a prompt through the bot pipeline as if the user wrote it."
+    },
+    "reset_user": {
+      "name": "Reset user",
+      "description": "Clear a user's profile and restart onboarding."
+    }
+  }
+}
