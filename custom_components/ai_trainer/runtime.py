@@ -122,6 +122,7 @@ class TrainerRuntime:
     def _handle_whatsapp_event(self, event) -> None:
         """Forward a WhatsApp event to the agent on the event loop."""
         data = dict(event.data or {})
+        self.logs.info("whatsapp_raw", f"raw event keys: {list(data.keys())}")
         account = str(self.settings.get(CONF_WHATSAPP_ACCOUNT) or "").strip()
         if account:
             event_entry = str(data.get("entry_id") or "")
