@@ -150,7 +150,10 @@ class TrainerRuntime:
                         f"WhatsApp account '{account}' לא זוהה — מעובד בכל זאת",
                     )
         try:
-            self.hass.async_create_task(self.agent.async_handle_event(data))
+            coro = self.agent.async_handle_event(data)
+            self.hass.loop.call_soon_threadsafe(
+                self.hass.async_create_task, coro
+            )
             self.logs.info("dispatched", "task scheduled for async_handle_event")
         except Exception as err:  # noqa: BLE001
             self.logs.error("dispatch_failed", f"{type(err).__name__}: {err}")
