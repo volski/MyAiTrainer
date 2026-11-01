@@ -83,7 +83,6 @@ def _account_selector(hass) -> selector.SelectSelector:
 def _text(
     multiline: bool = False,
     password: bool = False,
-    placeholder: str | None = None,
 ) -> selector.TextSelector:
     return selector.TextSelector(
         selector.TextSelectorConfig(
@@ -93,7 +92,6 @@ def _text(
                 if password
                 else selector.TextSelectorType.TEXT
             ),
-            placeholder=placeholder,
         )
     )
 
@@ -166,9 +164,7 @@ class AITrainerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             {
                 vol.Required(CONF_PROVIDER, default=DEFAULT_PROVIDER): _provider_selector(),
                 vol.Optional(CONF_API_KEY, default=""): _text(password=True),
-                vol.Optional(CONF_MODEL, default=""): _text(
-                    placeholder="Leave empty for the provider default"
-                ),
+                vol.Optional(CONF_MODEL, default=""): _text(),
                 vol.Optional(CONF_WHATSAPP_ACCOUNT, default=""): _account_selector(
                     self.hass
                 ),
@@ -259,14 +255,12 @@ class AITrainerOptionsFlow(config_entries.OptionsFlow):
                 vol.Required(
                     CONF_PROVIDER, default=self._draft.get(CONF_PROVIDER, DEFAULT_PROVIDER)
                 ): _provider_selector(),
-                vol.Optional(CONF_MODEL, default=self._draft.get(CONF_MODEL, "")): _text(
-                    placeholder="Leave empty for the provider default"
-                ),
+                vol.Optional(CONF_MODEL, default=self._draft.get(CONF_MODEL, "")): _text(),
                 vol.Optional(CONF_API_KEY, default=""): _text(password=True),
                 vol.Optional("clear_api_key", default=False): selector.BooleanSelector(),
                 vol.Optional(
                     CONF_BASE_URL, default=self._draft.get(CONF_BASE_URL, "")
-                ): _text(placeholder="Ollama / OpenAI-compatible base URL"),
+                ): _text(),
                 vol.Optional(
                     CONF_TEMPERATURE,
                     default=self._draft.get(CONF_TEMPERATURE, DEFAULT_TEMPERATURE),
@@ -315,7 +309,7 @@ class AITrainerOptionsFlow(config_entries.OptionsFlow):
                     default=self._draft.get(
                         CONF_WHATSAPP_SERVICE, "whatsapp.send_message"
                     ),
-                ): _text(placeholder="whatsapp.send_message"),
+                ): _text(),
                 vol.Optional(
                     CONF_WHATSAPP_ACCOUNT,
                     default=self._draft.get(CONF_WHATSAPP_ACCOUNT, ""),
@@ -326,7 +320,7 @@ class AITrainerOptionsFlow(config_entries.OptionsFlow):
                 vol.Optional(
                     CONF_ALLOWED_NUMBERS,
                     default=", ".join(self._draft.get(CONF_ALLOWED_NUMBERS, [])),
-                ): _text(placeholder="Optional allow-list, comma separated"),
+                ): _text(),
             }
         )
         return self.async_show_form(
@@ -383,7 +377,7 @@ class AITrainerOptionsFlow(config_entries.OptionsFlow):
                     default=", ".join(
                         self._draft.get(CONF_WATER_TIMES, DEFAULT_WATER_TIMES)
                     ),
-                ): _text(placeholder="10:00, 13:00, 16:00, 19:00"),
+                ): _text(),
                 vol.Optional(
                     CONF_ENABLE_WORKOUT,
                     default=bool(self._draft.get(CONF_ENABLE_WORKOUT, True)),
