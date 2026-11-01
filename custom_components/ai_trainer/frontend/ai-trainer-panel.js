@@ -328,7 +328,6 @@ class AITrainerPanel extends HTMLElement {
     this._userTab = "profile";
     this._addUserOpen = false;
     this._toastTimer = null;
-    this._refreshTimer = null;
     this._boundClick = this._onClick.bind(this);
     this._boundSubmit = this._onSubmit.bind(this);
     this._boundInput = this._onInput.bind(this);
@@ -353,16 +352,9 @@ class AITrainerPanel extends HTMLElement {
     }
     this._render();
     if (this._hass && !this._loaded) this._loadAll();
-    if (!this._refreshTimer) {
-      this._refreshTimer = setInterval(() => this._autoRefresh(), 60000);
-    }
   }
 
   disconnectedCallback() {
-    if (this._refreshTimer) {
-      clearInterval(this._refreshTimer);
-      this._refreshTimer = null;
-    }
     document.removeEventListener("keydown", this._boundKey);
   }
 
@@ -371,16 +363,6 @@ class AITrainerPanel extends HTMLElement {
     this._hass = hass;
     if (first && this.isConnected && !this._loaded) {
       this._loadAll();
-    } else if (
-      this.isConnected &&
-      this._loaded &&
-      !this._refreshTimer &&
-      hass &&
-      hass.auth &&
-      !hass.auth.expired
-    ) {
-      // Re-enable auto-refresh if a fresh authenticated session was restored
-      this._refreshTimer = setInterval(() => this._autoRefresh(), 60000);
     }
   }
 
@@ -456,18 +438,10 @@ class AITrainerPanel extends HTMLElement {
     // stop the auto-refresh interval timer. This guarantees that background loops never
     // repeatedly send unauthenticated requests and trigger Home Assistant's ip_bans.yaml brute-force ban!
     if (response.status === 401) {
-      if (this._refreshTimer) {
-        clearInterval(this._refreshTimer);
-        this._refreshTimer = null;
-      }
       throw new Error("פג תוקף החיבור למערכת (401). יש לרענן את העמוד.");
     }
 
     if (response.status === 403) {
-      if (this._refreshTimer) {
-        clearInterval(this._refreshTimer);
-        this._refreshTimer = null;
-      }
       throw new Error("נדרשת הרשאת מנהל כדי לנהל את המאמן.");
     }
 
@@ -537,40 +511,6 @@ class AITrainerPanel extends HTMLElement {
     const data = await this._api("/users/" + encodeURIComponent(this._selectedId));
     this._selectedUser = data.user;
     this._render();
-  }
-
-  async _autoRefresh() {
-    if (document.hidden || this._busy || this._selectedId || this._loading) return;
-    if (this._tab !== "dashboard" && this._tab !== "logs") return;
-    try {
-      // Fetch sequentially so any error aborts immediately without sending further requests
-      const config = await this._api("/config");
-      const logs = await this._api("/logs?limit=80");
-      let users = null;
-      if (this._tab === "dashboard") {
-        const usersResp = await this._api("/users");
-        users = (usersResp && usersResp.users) || [];
-      }
-      this._config = config;
-      this._logs = (logs && logs.logs) || [];
-      if (users !== null) {
-        this._users = users;
-      }
-      this._render();
-    } catch (err) {
-      /* silent background refresh */
-      if (
-        this._refreshTimer &&
-        (
-          !this._hass ||
-          !this._hass.auth ||
-          (err && String(err.message || "").match(/401|403|תוקף|התחברות|הרשאת מנהל/i))
-        )
-      ) {
-        clearInterval(this._refreshTimer);
-        this._refreshTimer = null;
-      }
-    }
   }
 
   // ------------------------------------------------------------------
