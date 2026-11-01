@@ -69,7 +69,7 @@ class TrainerRuntime:
             EVENT_MESSAGE_RECEIVED, self._handle_whatsapp_event
         )
         await self.scheduler.async_start()
-        self.logs.info(
+        self.logs.warning(
             "startup",
             f"AI Trainer {VERSION} פעיל · ספק: {provider_meta(self.settings.get(CONF_PROVIDER)).get('label')}",
         )

@@ -82,6 +82,23 @@ async def _body(request: web.Request) -> dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
+def _json_safe(value: Any) -> Any:
+    """Coerce a value to something JSON-serialisable."""
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, dict):
+        return {str(k): _json_safe(v) for k, v in value.items()}
+    if isinstance(value, set):
+        return [_json_safe(item) for item in value]
+    # datetime / date / bytes / other objects -> string
+    try:
+        return str(value)
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def _as_bool(value: Any, fallback: bool = False) -> bool:
     if isinstance(value, bool):
         return value
@@ -256,7 +273,9 @@ class UsersView(HomeAssistantView):
             key=lambda item: str(item.get("created_at") or ""),
             reverse=True,
         )
-        return self.json({"users": [runtime.user_summary(user) for user in users]})
+        return self.json(
+            {"users": [_json_safe(runtime.user_summary(user)) for user in users]}
+        )
 
     async def post(self, request: web.Request) -> web.Response:
         if not _is_admin(request):
@@ -316,6 +335,7 @@ class UserView(HomeAssistantView):
                 return self.json({"error": "User not found."}, status_code=404)
             try:
                 detail = runtime.user_detail(user)
+                detail = _json_safe(detail)
                 return self.json({"user": detail})
             except Exception as err:  # noqa: BLE001 - surface the real cause to the caller
                 _LOGGER.exception("AI Trainer user_detail failed")
@@ -433,6 +453,30 @@ class UserView(HomeAssistantView):
         runtime.store.delete_user(user.get("id"))
         runtime.logs.info("user_deleted", "משתמש נמחק", str(user.get("id")))
         return self.json({"ok": True})
+
+
+class UserDeleteView(HomeAssistantView):
+    """Delete one user and all their data."""
+
+    url = "/api/ai_trainer/users/{user_id}/delete"
+    name = "api:ai_trainer:user_delete"
+    requires_auth = True
+
+    async def post(self, request: web.Request) -> web.Response:
+        if not _is_admin(request):
+            return _forbidden()
+        runtime, error = await _runtime(request)
+        if error:
+            return error
+        assert runtime is not None
+        user = runtime.find_user(request.match_info["user_id"])
+        if user is None:
+            return self.json({"error": "User not found."}, status_code=404)
+        phone = str(user.get("id") or user.get("phone") or "")
+        ok = await runtime.agent.async_delete_user_for(phone, deliver=True)
+        if not ok:
+            return self.json({"error": "Could not delete user."}, status_code=400)
+        return self.json({"ok": True, "deleted": phone})
 
 
 class UserResetView(HomeAssistantView):
@@ -648,6 +692,7 @@ VIEW_CLASSES = (
     ConfigView,
     UsersView,
     UserView,
+    UserDeleteView,
     UserResetView,
     UserPlanView,
     UserMessageView,

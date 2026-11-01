@@ -299,6 +299,16 @@ class TrainerAgent:
                 await self.async_send(user, "בוטל — ממשיכים כרגיל 🙂", target)
             return
 
+        # Two-step delete confirmation.
+        if user.get("pending_delete"):
+            if normalise_hebrew(text) in {"כן", "מאשר", "מאשרת", "yes", "confirm", "y"}:
+                await self._async_delete_user(user, target)
+            else:
+                user["pending_delete"] = False
+                store.touch(user)
+                await self.async_send(user, "בוטל — הפרופיל נשמר 🙂", target)
+            return
+
         if user.get("status") == "onboarding" or user.get("onboarding_step") not in {
             None,
             "done",
@@ -345,8 +355,19 @@ class TrainerAgent:
                 "כתבו *כן* לאישור או כל דבר אחר לביטול.",
                 target,
             )
+        elif command == "delete":
+            user["pending_delete"] = True
+            store.touch(user)
+            await self.async_send(
+                user,
+                "⚠️ למחוק את הפרופיל (incl. כל ההיסטוריה וההתקדמות)?\n"
+                "זוהי פעולה בלתי הפיכה.\n"
+                "כתבו *כן* לאישור או כל דבר אחר לביטול.",
+                target,
+            )
         elif command == "cancel":
             user["pending_reset"] = False
+            user["pending_delete"] = False
             store.touch(user)
             await self.async_send(user, "בוטל. ממשיכים כרגיל 🙂", target)
         else:
@@ -475,6 +496,24 @@ class TrainerAgent:
             await self.async_send(fresh, "🔄 איפוס הושלם.\n\n" + greeting, target)
         return fresh
 
+    async def _async_delete_user(
+        self, user: dict[str, Any], target: str, deliver: bool = True
+    ) -> None:
+        """Delete a user and all their data, then send a confirmation."""
+        store = self.runtime.store
+        phone = str(user.get("phone") or user.get("id") or "")
+        name = str(user.get("name") or phone)
+        store.delete_user(phone)
+        store.save()
+        self.runtime.logs.info("delete", f"המשתמש נמחק: {name}", phone)
+        if deliver:
+            await self.runtime.bridge.async_send(
+                target,
+                f"🗑️ הפרופיל של {name} נמחק.\n"
+                "כל הנתונים וההיסטוריה נמחקו.\n"
+                "אם תרצו להתחיל מחדש, просто כתבו לי 🙂",
+            )
+
     # ------------------------------------------------------------------
     # Free text / AI
     # ------------------------------------------------------------------
@@ -576,6 +615,19 @@ class TrainerAgent:
             return await self._async_reset_user(
                 user, str(user.get("jid") or ""), deliver=deliver
             )
+
+    async def async_delete_user_for(
+        self, phone: str, deliver: bool = True
+    ) -> bool:
+        """Delete a user profile and all data."""
+        user = self.runtime.store.get_user(phone)
+        if user is None:
+            return False
+        async with self.runtime.lock_for(str(user["id"])):
+            await self._async_delete_user(
+                user, str(user.get("jid") or ""), deliver=deliver
+            )
+        return True
 
     async def async_send_plan(
         self,

@@ -204,6 +204,8 @@ def detect_command(text: Any) -> str | None:
         return "resume"
     if re.search(r"^(איפוס|אפס|reset|התחל מחדש)\b", value):
         return "reset"
+    if re.search(r"^(מחק|מחיקה|delete|remove|הסר|הסרה)\b", value):
+        return "delete"
     if re.search(r"^(ביטול|cancel)\b", value):
         return "cancel"
     return None
