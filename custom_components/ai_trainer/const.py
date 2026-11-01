@@ -13,7 +13,7 @@ from typing import Any, Final
 
 DOMAIN: Final = "ai_trainer"
 NAME: Final = "AI Trainer"
-VERSION: Final = "1.0.21"
+VERSION: Final = "1.0.22"
 
 # Frontend
 PANEL_URL: Final = "ai-trainer"

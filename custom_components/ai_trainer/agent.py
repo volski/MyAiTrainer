@@ -259,6 +259,7 @@ class TrainerAgent:
             message_id=message_id,
             media_url=media_url,
             media_type=media_type,
+            event_data=data,
         )
 
     # ------------------------------------------------------------------
@@ -274,6 +275,7 @@ class TrainerAgent:
         message_id: str = "",
         media_url: str = "",
         media_type: str = "",
+        event_data: dict[str, Any] | None = None,
     ) -> None:
         """Handle one inbound text message (already filtered)."""
         phone = normalize_phone(phone)
@@ -290,6 +292,7 @@ class TrainerAgent:
                     message_id=message_id,
                     media_url=media_url,
                     media_type=media_type,
+                    event_data=event_data,
                 )
             except Exception as err:  # noqa: BLE001 - never kill the listener
                 _LOGGER.exception("AI Trainer failed to handle message")
@@ -307,6 +310,7 @@ class TrainerAgent:
         message_id: str,
         media_url: str = "",
         media_type: str = "",
+        event_data: dict[str, Any] | None = None,
     ) -> None:
         store = self.runtime.store
         settings = self.runtime.settings
@@ -340,11 +344,25 @@ class TrainerAgent:
         self._reset_daily_counters(user)
 
         # Determine whether this event carries an image.
+        raw_msg = (event_data or {}).get("raw") or (event_data or {}).get("message") or {}
         has_image = bool(
-            media_url
+            (
+                media_url
+                or (
+                    event_data
+                    and (
+                        event_data.get("media_path")
+                        or event_data.get("type") in {"image", "photo", "picture"}
+                        or (isinstance(raw_msg, dict) and raw_msg.get("imageMessage"))
+                    )
+                )
+            )
             and (
                 (media_type or "").startswith("image")
-                or any(media_url.lower().endswith(ext) for ext in (".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".heif"))
+                or any(
+                    str(media_url or "").lower().endswith(ext)
+                    for ext in (".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".heif")
+                )
                 or not media_type
             )
         )
@@ -352,7 +370,9 @@ class TrainerAgent:
             await self.async_send(user, MEDIA_TEXT, target)
             return
         if has_image:
-            await self._async_image_calorie(user, text, target, phone, media_url, media_type)
+            await self._async_image_calorie(
+                user, text, target, phone, media_url, media_type, event_data=event_data
+            )
             return
 
         store.add_history(user, "user", text)
@@ -509,77 +529,222 @@ class TrainerAgent:
         with open(path, "rb") as f:
             return f.read(max_bytes + 1)
 
-    async def _async_load_image(self, media_url: str) -> bytes | None:
-        """Download or read image bytes from a URL or local file path."""
-        url = str(media_url or "").strip()
-        if not url:
-            return None
+    async def _async_load_image(
+        self, media_url: str, event_data: dict[str, Any] | None = None
+    ) -> bytes | None:
+        """Download or read image bytes from a URL, local path, or WhatsApp gateway."""
+        session = self.runtime._session
+        raw_data = event_data or {}
+        raw_msg = raw_data.get("raw") or raw_data.get("message") or {}
+        if not isinstance(raw_msg, dict):
+            raw_msg = {}
 
-        # Check inline base64 data URI
-        if url.startswith("data:image/") and ";base64," in url:
-            try:
-                b64_part = url.split(";base64,", 1)[1]
-                data = base64.b64decode(b64_part)
-                return data if len(data) <= MAX_IMAGE_BYTES else None
-            except Exception as err:
-                _LOGGER.warning("Failed to decode base64 image data: %s", err)
-                return None
+        # 1. Collect all potential media location strings / URLs / base64
+        sources: list[str] = []
+        if media_url:
+            sources.append(media_url.strip())
 
-        # Check local absolute path
-        if os.path.isabs(url) and os.path.exists(url) and os.path.isfile(url):
-            try:
-                data = await asyncio.to_thread(self._read_file_bytes, url, MAX_IMAGE_BYTES)
-                return data if len(data) <= MAX_IMAGE_BYTES else None
-            except Exception as err:
-                _LOGGER.warning("Failed to read local media file %s: %s", url, err)
-                return None
+        for k in (
+            "media_url",
+            "media_path",
+            "attachment",
+            "url",
+            "file",
+            "file_path",
+            "image",
+            "media",
+            "path",
+            "filename",
+        ):
+            for src_dict in (raw_data, raw_msg):
+                val = src_dict.get(k)
+                if isinstance(val, str) and val.strip() and val.strip() not in sources:
+                    sources.append(val.strip())
 
-        # Check HTTP / HTTPS URL
-        if url.startswith(("http://", "https://")):
-            session = self.runtime._session
-            if session is None or session.closed:
-                return None
-            try:
-                async with session.get(url, timeout=aiohttp.ClientTimeout(total=25)) as resp:
-                    if resp.status == 200:
-                        data = await resp.read()
-                        return data if len(data) <= MAX_IMAGE_BYTES else None
-                    _LOGGER.warning("Media download failed with status %s: %s", resp.status, url)
-            except Exception as err:
-                _LOGGER.warning("Failed to download media from %s: %s", url, err)
-                return None
-
-        # Check candidate locations in Home Assistant media or config directories
-        clean_rel = url.lstrip("/\\")
-        candidates = [url]
-        try:
-            media_path = self.runtime.hass.config.path("media")
-            candidates.append(os.path.join(media_path, clean_rel))
-            if clean_rel.startswith("media/"):
-                candidates.append(os.path.join(media_path, clean_rel[6:]))
-        except Exception:
-            pass
-
-        try:
-            config_dir = self.runtime.hass.config.config_dir
-            candidates.append(os.path.join(config_dir, clean_rel))
-            candidates.append(os.path.join(config_dir, "www", clean_rel))
-            if clean_rel.startswith("local/"):
-                candidates.append(os.path.join(config_dir, "www", clean_rel[6:]))
-            if clean_rel.startswith("media/"):
-                candidates.append(os.path.join(config_dir, clean_rel))
-        except Exception:
-            pass
-
-        for cand in candidates:
-            if cand and os.path.exists(cand) and os.path.isfile(cand):
+        # 2. Check for base64 inline data
+        for s in sources:
+            if s.startswith("data:image/") and ";base64," in s:
                 try:
-                    data = await asyncio.to_thread(self._read_file_bytes, cand, MAX_IMAGE_BYTES)
-                    if data and len(data) <= MAX_IMAGE_BYTES:
+                    b64_part = s.split(";base64,", 1)[1]
+                    data = base64.b64decode(b64_part)
+                    if 0 < len(data) <= MAX_IMAGE_BYTES:
+                        _LOGGER.debug("Loaded image from data URI (%d bytes)", len(data))
                         return data
                 except Exception as err:
-                    _LOGGER.warning("Failed to read media candidate %s: %s", cand, err)
+                    _LOGGER.warning("Failed to decode base64 data URI: %s", err)
 
+        # Also check if raw_data or raw_msg has a raw base64 string
+        for k in ("base64", "image_base64", "data"):
+            for src_dict in (raw_data, raw_msg):
+                b64_candidate = src_dict.get(k)
+                if isinstance(b64_candidate, str) and len(b64_candidate) > 200:
+                    try:
+                        clean_b64 = b64_candidate.split(";base64,")[-1].strip()
+                        data = base64.b64decode(clean_b64)
+                        if 0 < len(data) <= MAX_IMAGE_BYTES:
+                            _LOGGER.debug(
+                                "Loaded image from base64 field '%s' (%d bytes)",
+                                k,
+                                len(data),
+                            )
+                            return data
+                    except Exception:
+                        pass
+
+        # 3. Check for absolute or relative local files on disk
+        filenames: list[str] = []
+        for s in sources:
+            if not s.startswith(("http://", "https://", "data:")):
+                base = os.path.basename(s.replace("\\", "/"))
+                if base and base not in filenames:
+                    filenames.append(base)
+                clean_rel = s.lstrip("/\\")
+                if clean_rel and clean_rel not in filenames:
+                    filenames.append(clean_rel)
+
+        file_candidates: list[str] = []
+        for s in sources:
+            if not s.startswith(("http://", "https://", "data:")):
+                file_candidates.append(s)
+
+        # Standard Home Assistant / Add-on paths
+        config_dir = (
+            self.runtime.hass.config.config_dir if self.runtime.hass else "/config"
+        )
+        media_dirs = [
+            "/media",
+            "/media/whatsapp",
+            "/share",
+            "/share/whatsapp",
+            "/data/media",
+            os.path.join(config_dir, "media"),
+            os.path.join(config_dir, "media", "whatsapp"),
+            os.path.join(config_dir, "www"),
+            os.path.join(config_dir, "www", "whatsapp"),
+        ]
+
+        for fname in filenames:
+            for mdir in media_dirs:
+                file_candidates.append(os.path.join(mdir, fname))
+            try:
+                if self.runtime.hass:
+                    file_candidates.append(
+                        self.runtime.hass.config.path("media", fname)
+                    )
+                    file_candidates.append(
+                        self.runtime.hass.config.path("www", fname)
+                    )
+            except Exception:
+                pass
+
+        # Check existing file candidates
+        for cand in file_candidates:
+            if cand and os.path.isfile(cand):
+                try:
+                    data = await asyncio.to_thread(
+                        self._read_file_bytes, cand, MAX_IMAGE_BYTES
+                    )
+                    if data and 0 < len(data) <= MAX_IMAGE_BYTES:
+                        _LOGGER.info(
+                            "AI Trainer loaded image from local file: %s (%d bytes)",
+                            cand,
+                            len(data),
+                        )
+                        return data
+                except Exception as err:
+                    _LOGGER.warning("Failed to read local media file %s: %s", cand, err)
+
+        # 4. Check HTTP / HTTPS URLs (direct and addon-hosted)
+        http_urls: list[str] = []
+        for s in sources:
+            if s.startswith(("http://", "https://")):
+                http_urls.append(s)
+
+        # Discover WhatsApp Addon / Gateway hosts
+        addon_hosts: list[str] = []
+        if self.runtime.hass:
+            for _, wa_entry in (
+                self.runtime.hass.data.get("whatsapp") or {}
+            ).items():
+                if isinstance(wa_entry, dict):
+                    client = wa_entry.get("client")
+                    if client and getattr(client, "host", None):
+                        h = str(client.host).rstrip("/")
+                        if h and h not in addon_hosts:
+                            addon_hosts.append(h)
+            for entry in self.runtime.hass.config_entries.async_entries("whatsapp"):
+                for key in ("host", "url", "addon_url"):
+                    h = entry.data.get(key) or entry.options.get(key)
+                    if isinstance(h, str) and h.strip():
+                        h_str = h.strip().rstrip("/")
+                        if h_str and h_str not in addon_hosts:
+                            addon_hosts.append(h_str)
+
+        # Default fallback hosts for ha-whatsapp addon
+        for default_host in (
+            "http://core-whatsapp:8000",
+            "http://localhost:8000",
+            "http://127.0.0.1:8000",
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+        ):
+            if default_host not in addon_hosts:
+                addon_hosts.append(default_host)
+
+        # Also Home Assistant internal base URL
+        try:
+            from homeassistant.helpers import network
+
+            ha_url = network.get_url(self.runtime.hass, allow_internal=True).rstrip("/")
+            if ha_url and ha_url not in addon_hosts:
+                addon_hosts.append(ha_url)
+        except Exception:
+            pass
+
+        # Build candidate URLs on addon / HA hosts
+        for host in addon_hosts:
+            for s in sources:
+                if not s.startswith(("http://", "https://", "data:")):
+                    clean = s.lstrip("/\\")
+                    http_urls.append(f"{host}/{clean}")
+                    if not clean.startswith("media/"):
+                        http_urls.append(f"{host}/media/{clean}")
+            for fname in filenames:
+                http_urls.append(f"{host}/media/{fname}")
+                http_urls.append(f"{host}/{fname}")
+
+        # Remove duplicates while preserving order
+        seen_urls: set[str] = set()
+        deduped_urls: list[str] = []
+        for u in http_urls:
+            if u not in seen_urls:
+                seen_urls.add(u)
+                deduped_urls.append(u)
+
+        if session and not session.closed:
+            for target_url in deduped_urls:
+                try:
+                    async with session.get(
+                        target_url, timeout=aiohttp.ClientTimeout(total=15)
+                    ) as resp:
+                        if resp.status == 200:
+                            data = await resp.read()
+                            if data and 0 < len(data) <= MAX_IMAGE_BYTES:
+                                _LOGGER.info(
+                                    "AI Trainer successfully downloaded image from %s (%d bytes)",
+                                    target_url,
+                                    len(data),
+                                )
+                                return data
+                except Exception as err:
+                    _LOGGER.debug("Failed candidate image URL %s: %s", target_url, err)
+
+        _LOGGER.warning(
+            "AI Trainer could not load image (tested %d file candidates, %d HTTP URLs). Sources: %s",
+            len(file_candidates),
+            len(deduped_urls),
+            sources,
+        )
         return None
 
     async def _async_image_calorie(
@@ -590,6 +755,7 @@ class TrainerAgent:
         phone: str,
         media_url: str,
         media_type: str,
+        event_data: dict[str, Any] | None = None,
     ) -> None:
         """Analyze a food or drink image, estimate calories, and prompt for confirmation."""
         provider = self.runtime.provider
@@ -597,7 +763,7 @@ class TrainerAgent:
             await self.async_send(user, NO_AI_TEXT, target)
             return
 
-        image_bytes = await self._async_load_image(media_url)
+        image_bytes = await self._async_load_image(media_url, event_data=event_data)
         if not image_bytes:
             await self.async_send(
                 user,
