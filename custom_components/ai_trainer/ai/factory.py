@@ -53,6 +53,12 @@ def create_provider(
     kind = str(meta.get("kind") or "openai")
 
     model = str(settings.get(CONF_MODEL) or meta.get("default_model") or "").strip()
+    # Migrate deprecated Google model names to the current default.
+    if provider_id == "google" and model in {
+        "gemini-2.0-flash",
+        "models/gemini-2.0-flash",
+    }:
+        model = str(meta.get("default_model") or "").strip()
     base_url = str(settings.get(CONF_BASE_URL) or meta.get("base_url") or "").strip()
     api_key = str(settings.get(CONF_API_KEY) or "").strip()
     temperature = max(
