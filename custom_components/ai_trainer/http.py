@@ -304,23 +304,34 @@ class UserView(HomeAssistantView):
     requires_auth = True
 
     async def get(self, request: web.Request) -> web.Response:
-        if not _is_admin(request):
-            return _forbidden()
-        runtime, error = await _runtime(request)
-        if error:
-            return error
-        assert runtime is not None
-        user = runtime.find_user(request.match_info["user_id"])
-        if user is None:
-            return self.json({"error": "User not found."}, status_code=404)
         try:
-            detail = runtime.user_detail(user)
-            return self.json({"user": detail})
-        except Exception as err:  # noqa: BLE001 - surface the real cause to the caller
-            _LOGGER.exception("AI Trainer user_detail failed")
+            if not _is_admin(request):
+                return _forbidden()
+            runtime, error = await _runtime(request)
+            if error:
+                return error
+            assert runtime is not None
+            user = runtime.find_user(request.match_info["user_id"])
+            if user is None:
+                return self.json({"error": "User not found."}, status_code=404)
             try:
-                return self.json(
-                    {"error": f"{type(err).__name__}: {err}"}, status_code=500
+                detail = runtime.user_detail(user)
+                return self.json({"user": detail})
+            except Exception as err:  # noqa: BLE001 - surface the real cause to the caller
+                _LOGGER.exception("AI Trainer user_detail failed")
+                try:
+                    return self.json(
+                        {"error": f"{type(err).__name__}: {err}"}, status_code=500
+                    )
+                except Exception:  # noqa: BLE001
+                    return web.Response(
+                        text=f"{type(err).__name__}: {err}", status=500
+                    )
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.exception("AI Trainer UserView.get crashed")
+            try:
+                return web.json_response(
+                    {"error": f"{type(err).__name__}: {err}"}, status=500
                 )
             except Exception:  # noqa: BLE001
                 return web.Response(text=f"{type(err).__name__}: {err}", status=500)
