@@ -127,6 +127,7 @@ class TrainerRuntime:
             event_entry = str(data.get("entry_id") or "")
             if event_entry and event_entry != account:
                 matches = False
+                known = False
                 for info in whatsapp_accounts(self.hass):
                     if account in {
                         info.get("entry_id"),
@@ -134,10 +135,21 @@ class TrainerRuntime:
                         info.get("unique_id"),
                         info.get("number"),
                     }:
+                        known = True
                         matches = info.get("entry_id") == event_entry
                         break
-                if not matches:
+                if known and not matches:
+                    self.logs.warning(
+                        "ignored",
+                        f"הודעה מ-WhatsApp account אחר ({event_entry}) — מוגדר {account}",
+                    )
                     return
+                if not known:
+                    self.logs.warning(
+                        "config",
+                        f"WhatsApp account '{account}' לא זוהה —  treated as default, "
+                        "message accepted",
+                    )
         self.hass.async_create_task(self.agent.async_handle_event(data))
 
     # ------------------------------------------------------------------
