@@ -333,17 +333,16 @@ class UserView(HomeAssistantView):
             _tb_text = _tb.format_exc()
             _LOGGER.exception("AI Trainer UserView.get crashed")
             # Write to a file so the cause is visible even if HA log filtering hides it.
-            try:
-                with open("/config/ai_trainer_crash.txt", "a", encoding="utf-8") as _f:
-                    _f.write(_tb_text + "\\n---\\n")
-            except Exception:  # noqa: BLE001
+            for _path in (
+                "/homeassistant/ai_trainer_crash.txt",
+                "/config/ai_trainer_crash.txt",
+            ):
                 try:
-                    with open(
-                        "/homeassistant/ai_trainer_crash.txt", "a", encoding="utf-8"
-                    ) as _f:
+                    with open(_path, "a", encoding="utf-8") as _f:
                         _f.write(_tb_text + "\\n---\\n")
+                    break
                 except Exception:  # noqa: BLE001
-                    pass
+                    continue
             try:
                 return web.json_response(
                     {"error": f"{type(err).__name__}: {err}"}, status=500
