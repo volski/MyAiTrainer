@@ -691,17 +691,7 @@ class TrainerAgent:
             if default_host not in addon_hosts:
                 addon_hosts.append(default_host)
 
-        # Also Home Assistant internal base URL
-        try:
-            from homeassistant.helpers import network
-
-            ha_url = network.get_url(self.runtime.hass, allow_internal=True).rstrip("/")
-            if ha_url and ha_url not in addon_hosts:
-                addon_hosts.append(ha_url)
-        except Exception:
-            pass
-
-        # Build candidate URLs on addon / HA hosts
+        # Build candidate URLs on addon hosts
         for host in addon_hosts:
             for s in sources:
                 if not s.startswith(("http://", "https://", "data:")):

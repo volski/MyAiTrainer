@@ -369,7 +369,19 @@ class AITrainerPanel extends HTMLElement {
   set hass(hass) {
     const first = !this._hass;
     this._hass = hass;
-    if (first && this.isConnected && !this._loaded) this._loadAll();
+    if (first && this.isConnected && !this._loaded) {
+      this._loadAll();
+    } else if (
+      this.isConnected &&
+      this._loaded &&
+      !this._refreshTimer &&
+      hass &&
+      hass.auth &&
+      !hass.auth.expired
+    ) {
+      // Re-enable auto-refresh if a fresh authenticated session was restored
+      this._refreshTimer = setInterval(() => this._autoRefresh(), 60000);
+    }
   }
 
   get hass() {
@@ -386,19 +398,79 @@ class AITrainerPanel extends HTMLElement {
   _token() {
     return this._hass && this._hass.auth && this._hass.auth.data
       ? this._hass.auth.data.access_token
-      : null;
+      : (this._hass && this._hass.auth ? this._hass.auth.accessToken : null);
+  }
+
+  async _fetchResponse(path, options) {
+    const opts = Object.assign({}, options || {});
+    const headers = Object.assign(
+      { "Content-Type": "application/json" },
+      opts.headers || {}
+    );
+    const url = "/api/ai_trainer" + path;
+
+    // 1. Preferred: Home Assistant's official fetchWithAuth.
+    // Handles access token lifecycle, automatic refresh before expiry, and retry.
+    // This prevents sending expired bearer tokens that cause HA to ban the IP into ip_bans.yaml.
+    if (this._hass && typeof this._hass.fetchWithAuth === "function") {
+      opts.headers = headers;
+      return await this._hass.fetchWithAuth(url, opts);
+    }
+
+    // 2. Fallback: refresh access token manually if expired before dispatching native fetch.
+    if (this._hass && this._hass.auth) {
+      const auth = this._hass.auth;
+      if (auth.expired && typeof auth.refreshAccessToken === "function") {
+        try {
+          await auth.refreshAccessToken();
+        } catch (err) {
+          console.warn("[ai-trainer] Token refresh failed:", err);
+        }
+      }
+      const token =
+        (auth.data && auth.data.access_token) || auth.accessToken || this._token();
+      if (token) {
+        headers["Authorization"] = "Bearer " + token;
+      }
+    } else {
+      const staticToken = this._token();
+      if (staticToken) {
+        headers["Authorization"] = "Bearer " + staticToken;
+      }
+    }
+
+    opts.headers = headers;
+    return await fetch(url, opts);
   }
 
   async _api(path, options) {
-    const token = this._token();
-    if (!token) throw new Error("אין אסימון התחברות. רעננו את העמוד.");
-    const opts = options || {};
-    const headers = Object.assign(
-      { "Content-Type": "application/json" },
-      opts.headers || {},
-      { Authorization: "Bearer " + token }
-    );
-    const response = await fetch("/api/ai_trainer" + path, Object.assign({}, opts, { headers }));
+    let response;
+    try {
+      response = await this._fetchResponse(path, options);
+    } catch (err) {
+      throw new Error(err && err.message ? err.message : "שגיאת תקשורת עם השרת.");
+    }
+
+    // Critical security & ban protection:
+    // If Home Assistant returns 401 (Unauthorized) or 403 (Forbidden), immediately
+    // stop the auto-refresh interval timer. This guarantees that background loops never
+    // repeatedly send unauthenticated requests and trigger Home Assistant's ip_bans.yaml brute-force ban!
+    if (response.status === 401) {
+      if (this._refreshTimer) {
+        clearInterval(this._refreshTimer);
+        this._refreshTimer = null;
+      }
+      throw new Error("פג תוקף החיבור למערכת (401). יש לרענן את העמוד.");
+    }
+
+    if (response.status === 403) {
+      if (this._refreshTimer) {
+        clearInterval(this._refreshTimer);
+        this._refreshTimer = null;
+      }
+      throw new Error("נדרשת הרשאת מנהל כדי לנהל את המאמן.");
+    }
+
     let data = {};
     try {
       data = await response.json();
@@ -406,9 +478,6 @@ class AITrainerPanel extends HTMLElement {
       data = {};
     }
     if (!response.ok) {
-      if (response.status === 403) {
-        throw new Error("נדרשת הרשאת מנהל כדי לנהל את המאמן.");
-      }
       throw new Error(data && data.error ? data.error : "שגיאה " + response.status);
     }
     return data;
@@ -420,14 +489,13 @@ class AITrainerPanel extends HTMLElement {
     this._error = "";
     this._render();
     try {
-      const results = await Promise.all([
-        this._api("/config"),
-        this._api("/users"),
-        this._api("/logs?limit=80"),
-      ]);
-      this._config = results[0];
-      this._users = (results[1] && results[1].users) || [];
-      this._logs = (results[2] && results[2].logs) || [];
+      // Execute sequentially to prevent blasting multiple requests if auth fails
+      const config = await this._api("/config");
+      const users = await this._api("/users");
+      const logs = await this._api("/logs?limit=80");
+      this._config = config;
+      this._users = (users && users.users) || [];
+      this._logs = (logs && logs.logs) || [];
       this._loaded = true;
     } catch (err) {
       this._error = err && err.message ? err.message : "שגיאה בטעינה";
@@ -475,14 +543,33 @@ class AITrainerPanel extends HTMLElement {
     if (document.hidden || this._busy || this._selectedId || this._loading) return;
     if (this._tab !== "dashboard" && this._tab !== "logs") return;
     try {
-      const results = await Promise.all([this._api("/config"), this._api("/logs?limit=80")]);
-      this._config = results[0];
-      this._logs = (results[1] && results[1].logs) || [];
-      const users = await this._api("/users");
-      this._users = (users && users.users) || [];
+      // Fetch sequentially so any error aborts immediately without sending further requests
+      const config = await this._api("/config");
+      const logs = await this._api("/logs?limit=80");
+      let users = null;
+      if (this._tab === "dashboard") {
+        const usersResp = await this._api("/users");
+        users = (usersResp && usersResp.users) || [];
+      }
+      this._config = config;
+      this._logs = (logs && logs.logs) || [];
+      if (users !== null) {
+        this._users = users;
+      }
       this._render();
     } catch (err) {
       /* silent background refresh */
+      if (
+        this._refreshTimer &&
+        (
+          !this._hass ||
+          !this._hass.auth ||
+          (err && String(err.message || "").match(/401|403|תוקף|התחברות|הרשאת מנהל/i))
+        )
+      ) {
+        clearInterval(this._refreshTimer);
+        this._refreshTimer = null;
+      }
     }
   }
 
