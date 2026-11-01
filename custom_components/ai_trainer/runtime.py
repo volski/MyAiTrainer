@@ -140,15 +140,13 @@ class TrainerRuntime:
                         break
                 if known and not matches:
                     self.logs.warning(
-                        "ignored",
-                        f"הודעה מ-WhatsApp account אחר ({event_entry}) — מוגדר {account}",
+                        "account_mismatch",
+                        f"הודעה מ-account {event_entry} (מוגדר {account}) — מעובד בכל זאת",
                     )
-                    return
                 if not known:
                     self.logs.warning(
                         "config",
-                        f"WhatsApp account '{account}' לא זוהה —  treated as default, "
-                        "message accepted",
+                        f"WhatsApp account '{account}' לא זוהה — מעובד בכל זאת",
                     )
         self.hass.async_create_task(self.agent.async_handle_event(data))
 
