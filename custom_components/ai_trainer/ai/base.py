@@ -90,7 +90,7 @@ class AIProvider:
                     url,
                     json=payload,
                     headers=headers,
-                    timeout=aiohttp.ClientTimeout(total=90),
+                    timeout=aiohttp.ClientTimeout(total=30),
                 ) as response:
                     body = await response.text()
                     if response.status >= 400:

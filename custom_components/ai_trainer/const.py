@@ -13,7 +13,7 @@ from typing import Any, Final
 
 DOMAIN: Final = "ai_trainer"
 NAME: Final = "AI Trainer"
-VERSION: Final = "1.0.4"
+VERSION: Final = "1.0.5"
 
 # Frontend
 PANEL_URL: Final = "ai-trainer"
@@ -84,7 +84,7 @@ PROVIDERS: Final[dict[str, dict[str, Any]]] = {
     },
     "google": {
         "label": "Google Gemini",
-        "default_model": "gemini-3.8-flash",
+        "default_model": "gemini-2.5-flash",
         "requires_key": True,
         "supports_base_url": False,
         "kind": "google",
