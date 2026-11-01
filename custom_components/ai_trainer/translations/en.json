@@ -143,6 +143,10 @@
     "reset_user": {
       "name": "Reset user",
       "description": "Clear a user's profile and restart onboarding."
+    },
+    "delete_user": {
+      "name": "Delete user",
+      "description": "Permanently delete a user and all their data."
     }
   }
 }

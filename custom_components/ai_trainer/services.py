@@ -19,12 +19,14 @@ SERVICE_SEND_DAILY_PLAN = "send_daily_plan"
 SERVICE_SEND_MESSAGE = "send_message"
 SERVICE_ASK = "ask"
 SERVICE_RESET_USER = "reset_user"
+SERVICE_DELETE_USER = "delete_user"
 
 SERVICE_NAMES = (
     SERVICE_SEND_DAILY_PLAN,
     SERVICE_SEND_MESSAGE,
     SERVICE_ASK,
     SERVICE_RESET_USER,
+    SERVICE_DELETE_USER,
 )
 
 SEND_PLAN_SCHEMA = vol.Schema(
@@ -49,6 +51,8 @@ ASK_SCHEMA = vol.Schema(
 )
 
 RESET_SCHEMA = vol.Schema({vol.Required("phone"): cv.string})
+
+DELETE_SCHEMA = vol.Schema({vol.Required("phone"): cv.string})
 
 
 async def async_register_services(hass: HomeAssistant) -> None:
@@ -120,6 +124,13 @@ async def async_register_services(hass: HomeAssistant) -> None:
             raise HomeAssistantError("AI Trainer user not found.")
         return {"ok": True}
 
+    async def _handle_delete(call: ServiceCall) -> dict[str, Any]:
+        runtime = await _runtime()
+        ok = await runtime.agent.async_delete_user_for(str(call.data["phone"]))
+        if not ok:
+            raise HomeAssistantError("AI Trainer user not found.")
+        return {"ok": True}
+
     hass.services.async_register(
         DOMAIN,
         SERVICE_SEND_DAILY_PLAN,
@@ -146,6 +157,13 @@ async def async_register_services(hass: HomeAssistant) -> None:
         SERVICE_RESET_USER,
         _handle_reset,
         schema=RESET_SCHEMA,
+        supports_response=SupportsResponse.OPTIONAL,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_DELETE_USER,
+        _handle_delete,
+        schema=DELETE_SCHEMA,
         supports_response=SupportsResponse.OPTIONAL,
     )
 

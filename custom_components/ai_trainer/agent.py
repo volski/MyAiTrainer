@@ -65,6 +65,7 @@ HELP_TEXT = (
     "• *סטטוס* — ההתקדמות שלך\n"
     "• *עצור* / *הפעל* — השהיית תזכורות\n"
     "• *איפוס* — התחלה מחדש\n"
+    "• *מחק* — מחיקת הפרופיל (בלתי הפיכה)\n"
     "• *עזרה* — ההודעה הזו"
 )
 
@@ -307,6 +308,36 @@ class TrainerAgent:
                 user["pending_delete"] = False
                 store.touch(user)
                 await self.async_send(user, "בוטל — הפרופיל נשמר 🙂", target)
+            return
+
+        # Allow delete/reset even during onboarding.
+        command = detect_command(text)
+        if command == "delete" and (
+            user.get("status") == "onboarding"
+            or user.get("onboarding_step") not in {None, "done"}
+        ):
+            user["pending_delete"] = True
+            store.touch(user)
+            await self.async_send(
+                user,
+                "⚠️ למחוק את הפרופיל (incl. כל ההיסטוריה וההתקדמות)?\n"
+                "זוהי פעולה בלתי הפיכה.\n"
+                "כתבו *כן* לאישור או כל דבר אחר לביטול.",
+                target,
+            )
+            return
+        if command == "reset" and (
+            user.get("status") == "onboarding"
+            or user.get("onboarding_step") not in {None, "done"}
+        ):
+            user["pending_reset"] = True
+            store.touch(user)
+            await self.async_send(
+                user,
+                "לאפס את הפרופיל וההתקדמות שלך?\n"
+                "כתבו *כן* לאישור או כל דבר אחר לביטול.",
+                target,
+            )
             return
 
         if user.get("status") == "onboarding" or user.get("onboarding_step") not in {
