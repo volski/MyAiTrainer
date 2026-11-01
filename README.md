@@ -1,5 +1,9 @@
 # AI Trainer
 
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=volski&repository=MyAiTrainer&category=integration)
+[![CI](https://github.com/volski/MyAiTrainer/actions/workflows/ci.yml/badge.svg)](https://github.com/volski/MyAiTrainer/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
 A Home Assistant custom integration that turns the
 [FaserF/ha-whatsapp](https://github.com/FaserF/ha-whatsapp) bot into a personal
 Hebrew health coach.
@@ -8,6 +12,25 @@ Send the bot a WhatsApp message and it creates a user, asks for the goal,
 weight and height in Hebrew, then sends a daily plan for food, water and
 exercise. Everything is managed from a sidebar panel inside Home Assistant:
 users, plans, chat history, AI provider, API keys and the schedule.
+
+## Install in one click
+
+> Requires [HACS](https://hacs.xyz/) and the
+> [My Home Assistant](https://my.home-assistant.io/) integration, which is
+> enabled by default on Home Assistant OS and Supervised installations.
+
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=volski&repository=MyAiTrainer&category=integration)
+
+Clicking the button opens your Home Assistant instance with this repository
+selected in HACS. Then:
+
+1. Press **Download** in HACS.
+2. Restart Home Assistant.
+3. Go to **Settings → Devices & services → Add integration → AI Trainer**.
+
+On a container/Core installation, or if the button is unavailable, add
+`https://github.com/volski/MyAiTrainer` manually as a custom repository in HACS
+(category **Integration**) and continue from step 1.
 
 ```
 WhatsApp  ──event──▶  ai_trainer  ──▶  AI provider (OpenAI / Anthropic / Google / DeepSeek / Ollama)
@@ -32,10 +55,6 @@ WhatsApp  ──event──▶  ai_trainer  ──▶  AI provider (OpenAI / Ant
   messages, provider and WhatsApp tests, live activity log.
 - **Safe by default** — admin-only panel and REST API, write-only API keys,
   optional phone allow-list, group messages ignored unless enabled, user cap.
-
-> **Publishing note:** update `documentation` / `issue_tracker` in
-> `custom_components/ai_trainer/manifest.json` to your repository URL before
-> publishing, and keep the `version` field in sync with `hacs.json`.
 
 ## Requirements
 
@@ -62,12 +81,14 @@ provides the `whatsapp_message_received` event and the
    the panel. Set the daily plan time and save.
 5. Open **AI Trainer** in the sidebar.
 
-### HACS (custom repository)
+### HACS
 
 1. HACS → Integrations → ⋮ → **Custom repositories**.
-2. Add this repository URL with category **Integration**.
+2. Add `https://github.com/volski/MyAiTrainer` with category **Integration**.
 3. Install **AI Trainer**, restart Home Assistant, then add the integration as
    above.
+
+Or use the [one-click button](#install-in-one-click) at the top of this page.
 
 ## Configuration
 
