@@ -13,8 +13,10 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import json
 import logging
 import os
+import re
 from collections import deque
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
@@ -53,6 +55,7 @@ from .core.text import (
     format_progress_bar,
     is_affirmative,
     is_negative,
+    is_water_decrease,
     normalise_hebrew,
     parse_calories_entry,
     parse_water_cups,
@@ -380,7 +383,7 @@ class TrainerAgent:
         # Calorie confirmation: add analysed food/drink to daily count.
         pending_cal = user.get("pending_calorie_add")
         if isinstance(pending_cal, dict) and "kcal" in pending_cal:
-            if is_affirmative(text):
+            if is_affirmative(text) or bool(re.search(r"(עדכן|תעדכן|תוסיף|תרשום|הוסף|לעדכן|להוסיף|לרשום)", text)):
                 await self._async_confirm_calories(user, pending_cal, target)
                 return
             elif is_negative(text):
@@ -452,6 +455,8 @@ class TrainerAgent:
             await self.async_send(user, self._calories_text(user), target)
         elif command == "water":
             await self._async_water(user, text, target)
+        elif command == "water_decrease":
+            await self._async_water_decrease(user, text, target)
         elif command == "workout_done":
             await self._async_workout_done(user, target)
         elif command == "weight_update":
@@ -835,6 +840,10 @@ class TrainerAgent:
     async def _async_water(
         self, user: dict[str, Any], text: str, target: str
     ) -> None:
+        if is_water_decrease(text):
+            await self._async_water_decrease(user, text, target)
+            return
+
         cups = parse_water_cups(text)
         if cups is None:
             await self.async_send(
@@ -855,6 +864,33 @@ class TrainerAgent:
         remaining_l = max(0.0, round((target_ml - done) / 1000.0, 1))
         lines = [
             f"💧 רשמתי {cups:g} כוסות.",
+            f"{bar}",
+            f"היום: {round(done / 1000.0, 1)} מתוך {round(target_ml / 1000.0, 1)} ליטר.",
+        ]
+        if done >= target_ml:
+            lines.append("הגעת ליעד המים היומי! 🎉")
+        else:
+            lines.append(f"נשארו {remaining_l} ליטר — בערך {int(round(remaining_l * 4))} כוסות.")
+        self.runtime.store.touch(user)
+        await self.async_send(user, "\n".join(lines), target)
+
+    async def _async_water_decrease(
+        self, user: dict[str, Any], text: str, target: str
+    ) -> None:
+        cups = parse_water_cups(text) or 1.0
+        stats = user.get("stats") or {}
+        current = int(stats.get("water_ml_today") or 0)
+        decrease_ml = int(round(cups * WATER_CUP_ML))
+        done = max(0, current - decrease_ml)
+        stats["water_ml_today"] = done
+        targets = targets_for(user.get("profile") or {})
+        target_ml = int(targets.get("water_ml") or 2500)
+        self._touch_checkin(user)
+
+        bar = format_progress_bar(done, target_ml)
+        remaining_l = max(0.0, round((target_ml - done) / 1000.0, 1))
+        lines = [
+            f"💧 הורדתי {cups:g} כוסות (תיקון רישום).",
             f"{bar}",
             f"היום: {round(done / 1000.0, 1)} מתוך {round(target_ml / 1000.0, 1)} ליטר.",
         ]
@@ -984,8 +1020,8 @@ class TrainerAgent:
         await self._throttle_ai(user)
         lower = normalise_hebrew(text)
         is_meal = bool(
-            lower.startswith(("אכלתי", "ארוחה", "meal", "ate"))
-            or "אכלתי" in lower[:20]
+            lower.startswith(("אכלתי", "ארוחה", "meal", "ate", "שתיתי"))
+            or any(word in lower[:30] for word in ("אכלתי", "שתיתי", "קלוריות", "ארוחת", "שווארמה", "חלבון"))
         )
 
         history = list(user.get("history") or [])
@@ -1021,11 +1057,60 @@ class TrainerAgent:
             )
             return
 
+        # Process LOG_FOOD tags from AI response
+        for match_str in re.findall(r"<!--\s*LOG_FOOD:\s*(\{.*?\})\s*-->", reply, flags=re.DOTALL):
+            try:
+                data = json.loads(match_str)
+                kcal = max(0, int(data.get("kcal") or 0))
+                item = str(data.get("item") or "מנה").strip()
+                is_drink = bool(data.get("is_drink"))
+                if kcal > 0 or item:
+                    stats = user.setdefault("stats", {})
+                    self._reset_daily_counters(user)
+                    current_cal = int(stats.get("calories_today") or 0)
+                    stats["calories_today"] = min(current_cal + kcal, MAX_DAILY_CALORIES)
+                    if is_drink:
+                        stats["drinks_today"] = int(stats.get("drinks_today") or 0) + 1
+                    food_log = stats.setdefault("food_log", [])
+                    food_log.append(
+                        {
+                            "item": item,
+                            "kcal": kcal,
+                            "is_drink": is_drink,
+                            "time": dt_util.now().strftime("%H:%M"),
+                        }
+                    )
+                    del food_log[:-MAX_FOOD_LOG_ITEMS]
+                    self._touch_checkin(user)
+            except Exception as err:
+                _LOGGER.warning("Failed to parse LOG_FOOD tag from AI: %s", err)
+
+        # Process REMOVE_FOOD tags from AI response
+        for match_str in re.findall(r"<!--\s*REMOVE_FOOD:\s*(\{.*?\})\s*-->", reply, flags=re.DOTALL):
+            try:
+                data = json.loads(match_str)
+                kcal = max(0, int(data.get("kcal") or 0))
+                if kcal > 0:
+                    stats = user.setdefault("stats", {})
+                    self._reset_daily_counters(user)
+                    current_cal = int(stats.get("calories_today") or 0)
+                    stats["calories_today"] = max(0, current_cal - kcal)
+                    food_log = stats.setdefault("food_log", [])
+                    if food_log:
+                        food_log.pop()
+                    self._touch_checkin(user)
+            except Exception as err:
+                _LOGGER.warning("Failed to parse REMOVE_FOOD tag from AI: %s", err)
+
+        clean_reply = re.sub(
+            r"<!--\s*(?:LOG_FOOD|REMOVE_FOOD):\s*\{.*?\}\s*-->\s*", "", reply, flags=re.DOTALL
+        ).strip()
+
         user.setdefault("stats", {})["last_ai_at"] = dt_util.now().isoformat()
         if is_meal:
             self._touch_checkin(user)
         self.runtime.store.touch(user)
-        await self.async_send(user, reply, target)
+        await self.async_send(user, clean_reply, target)
 
     async def _throttle_ai(self, user: dict[str, Any]) -> None:
         interval = float(self.runtime.settings.get(CONF_MIN_AI_INTERVAL) or 0)

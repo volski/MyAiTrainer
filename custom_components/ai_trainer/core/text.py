@@ -80,6 +80,7 @@ def normalise_hebrew(text: Any) -> str:
     value = value.replace("\u05f3", "'").replace("\u05f4", '"')
     value = value.replace("־", "-").replace("–", "-").replace("—", "-")
     value = value.lower()
+    value = re.sub(r"\bשתתי\b", "שתיתי", value)
     return _WHITESPACE.sub(" ", value).strip()
 
 
@@ -141,8 +142,10 @@ def parse_water_cups(text: Any) -> float | None:
         cups = number
     elif "חצי" in value or "half" in value:
         cups = 0.5
-    elif value:
+    elif re.search(r"\b(כוס|כוסית|כוסות|cup|cups|glass)\b", value):
         cups = 1.0
+    elif re.search(r"\b(בקבוק|בקבוקים|bottle|bottles)\b", value):
+        cups = 2.0
     else:
         return None
 
@@ -185,9 +188,10 @@ def is_affirmative(text: Any) -> bool:
     if not val:
         return False
     affirmative_words = {
-        "כן", "מאשר", "מאשרת", "אישור", "תוסיף", "הוסף",
-        "תרשום", "רשום", "סבבה", "בטח", "אחלה", "מעולה",
-        "טוב", "אוקי", "יאללה", "yes", "y", "ok", "okay",
+        "כן", "מאשר", "מאשרת", "אישור", "תוסיף", "הוסף", "תוסיפי",
+        "תרשום", "רשום", "תרשמי", "עדכן", "תעדכן", "עדכני", "תעדכני",
+        "ספור", "תספור", "תספרי", "סבבה", "בטח", "אחלה", "מעולה",
+        "טוב", "אוקי", "יאללה", "קדימה", "yes", "y", "ok", "okay",
         "sure", "yep", "yeah", "1", "נכון", "בכיף",
     }
     if val in affirmative_words:
@@ -213,6 +217,132 @@ def is_negative(text: Any) -> bool:
         return True
     first_word = val.split()[0]
     return first_word in negative_words
+
+
+NON_WATER_DRINKS: tuple[str, ...] = (
+    "קפה",
+    "אספרסו",
+    "נס קפה",
+    "קפוצינו",
+    "קפוצ'ינו",
+    "אמריקנו",
+    "מקיאטו",
+    "הפוך",
+    "שחור",
+    "תה",
+    "שוקו",
+    "מיץ",
+    "שייק",
+    "סמוטי",
+    "סמודי",
+    "פרו",
+    "חלבון",
+    "משקה חלבון",
+    "אבקת חלבון",
+    "בירה",
+    "יין",
+    "אלכוהול",
+    "וודקה",
+    "וויסקי",
+    "ערק",
+    "קוקטייל",
+    "קולה",
+    "זירו",
+    "פאנטה",
+    "ספרייט",
+    "חלב",
+    "סויה",
+    "שיבולת שועל",
+    "שקדים",
+    "coffee",
+    "espresso",
+    "tea",
+    "juice",
+    "shake",
+    "smoothie",
+    "protein",
+    "beer",
+    "wine",
+    "alcohol",
+    "milk",
+    "coke",
+)
+
+
+def is_question(text: Any) -> bool:
+    """Return True if the text is asking a question."""
+    raw = str(text or "").strip()
+    if not raw:
+        return False
+    if "?" in raw or "？" in raw:
+        return True
+    val = normalise_hebrew(raw)
+    question_starters = (
+        "האם",
+        "למה",
+        "מדוע",
+        "איך",
+        "כיצד",
+        "מתי",
+        "איפה",
+        "אן",
+        "אנה",
+        "נחשב",
+        "נחשבת",
+        "נחשבים",
+        "נכנס תחת",
+        "נכנסת תחת",
+        "נכנסים תחת",
+        "מה זה",
+        "מהו",
+        "מהי",
+        "מהם",
+        "האם מותר",
+        "מותר ל",
+        "אפשר ל",
+        "אפשר לקבל",
+        "why",
+        "how",
+        "what",
+        "when",
+        "where",
+        "is it",
+        "can i",
+        "does",
+    )
+    for starter in question_starters:
+        if val == starter or val.startswith(starter + " ") or val.startswith(starter + ":"):
+            return True
+    if re.search(r"\b(נחשב ל|נחשב כמו|נכנס תחת)\b", val):
+        return True
+    return False
+
+
+def is_water_decrease(text: Any) -> bool:
+    """Return True if text asks to reduce, subtract or remove water."""
+    val = normalise_hebrew(text)
+    decrease_words = (
+        "תוריד",
+        "הורד",
+        "להוריד",
+        "מחק",
+        "למחוק",
+        "בטעות",
+        "טעות",
+        "פחות",
+        "מינוס",
+        "-",
+        "הפחת",
+        "להפחית",
+        "הסר",
+        "להסיר",
+        "reduce",
+        "decrease",
+        "remove",
+        "minus",
+        "subtract",
+    )
+    return any(w in val for w in decrease_words)
 
 
 def parse_calories_entry(text: Any) -> tuple[int | None, str, bool]:
@@ -269,13 +399,27 @@ def detect_command(text: Any) -> str | None:
     if not value:
         return None
 
+    # Exact single punctuation / help
+    if re.search(r"^(עזרה|help|פקודות|\?)$", value):
+        return "help"
+
+    # A question should be answered conversationally by the AI, never misclassified as a command
+    if is_question(text):
+        return None
+
     # A meal log is conversational: let the AI answer it, even if the text
     # also mentions water.
     if re.match(r"^(אכלתי|ארוחה|meal|ate)\b", value):
         return None
 
-    if re.search(r"^(עזרה|help|פקודות|\?)$", value):
-        return "help"
+    # Water decrease/removal
+    if is_water_decrease(value) and re.search(r"(כוס|כוסות|מים|water|ליטר|מ\"ל|מ״ל|cup|cups)", value):
+        return "water_decrease"
+
+    # Non-water drinks (coffee, espresso, tea, protein shake, etc.) are conversational / food log, NOT pure water
+    if any(drink in value for drink in NON_WATER_DRINKS):
+        return None
+
     if re.search(r"^(סטטוס|מצב|התקדמות|status)\b", value):
         return "status"
     if re.search(r"(סיימתי אימון|אימון בוצע|עשיתי אימון|התאמנתי|done workout|workout done)", value):

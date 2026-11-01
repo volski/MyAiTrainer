@@ -40,6 +40,8 @@ from core.text import (  # noqa: E402
     format_progress_bar,
     is_affirmative,
     is_negative,
+    is_question,
+    is_water_decrease,
     parse_calories_entry,
     parse_goal,
     parse_height_cm,
@@ -130,7 +132,39 @@ class ParsingTests(unittest.TestCase):
         self.assertEqual(detect_command("קלוריות"), "calories")
         self.assertEqual(detect_command("כמה אכלתי"), "calories")
         self.assertEqual(detect_command("calories"), "calories")
+        self.assertEqual(detect_command("שתתי 1.5 ליטר מים"), "water")
+        self.assertEqual(detect_command("תוריד את 2 כוסות אחרונות. זה תיוג לא נכון"), "water_decrease")
+        self.assertEqual(detect_command("תוריד 2 כוסות"), "water_decrease")
+        self.assertEqual(detect_command("תמחק כוס מים"), "water_decrease")
+        self.assertEqual(detect_command("מחק"), "delete")
         self.assertIsNone(detect_command("מה שלומך?"))
+        self.assertIsNone(detect_command("כוס אספרסו נכנס תחת מים?"))
+        self.assertIsNone(detect_command("שתתי כוס אספרסו עם נגיעה חלב סויה וניל"))
+        self.assertIsNone(detect_command("שתיתי כוס קפה"))
+        self.assertIsNone(detect_command("שתתי שייק חלבון"))
+
+    def test_questions(self):
+        self.assertTrue(is_question("כוס אספרסו נכנס תחת מים?"))
+        self.assertTrue(is_question("כוס אספרסו נכנס תחת מים"))
+        self.assertTrue(is_question("האם מותר לשתות קפה?"))
+        self.assertTrue(is_question("האם אספרסו זה מים"))
+        self.assertTrue(is_question("מה זה קלוריות"))
+        self.assertTrue(is_question("איך להוריד במשקל"))
+        self.assertFalse(is_question("שתיתי 2 כוסות מים"))
+        self.assertFalse(is_question("תוריד את 2 כוסות אחרונות"))
+
+    def test_water_decrease(self):
+        self.assertTrue(is_water_decrease("תוריד את 2 כוסות אחרונות. זה תיוג לא נכון"))
+        self.assertTrue(is_water_decrease("תוריד 2 כוסות"))
+        self.assertTrue(is_water_decrease("תמחק כוס אחת"))
+        self.assertTrue(is_water_decrease("טעות, תוריד כוס"))
+        self.assertTrue(is_water_decrease("מינוס כוס"))
+        self.assertFalse(is_water_decrease("שתיתי 2 כוסות מים"))
+
+    def test_parse_water_cups_empty_or_words(self):
+        self.assertEqual(parse_water_cups("כוס"), 1.0)
+        self.assertEqual(parse_water_cups("בקבוק"), 2.0)
+        self.assertIsNone(parse_water_cups("סתם טקסט בלי שום כמות"))
 
     def test_meal_log_is_conversational(self):
         self.assertIsNone(detect_command("אכלתי חביתה עם 2 כוסות מים"))
