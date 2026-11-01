@@ -458,6 +458,7 @@ class ProviderTests(unittest.TestCase):
         self.assertIn("grok", PROVIDERS)
         self.assertIn("opencode", PROVIDERS)
         self.assertIn("codex", PROVIDERS)
+        self.assertIn("openrouter", PROVIDERS)
 
         # Check grok
         grok_meta = PROVIDERS["grok"]
@@ -482,6 +483,14 @@ class ProviderTests(unittest.TestCase):
         self.assertEqual(codex_meta["default_model"], "gpt-4o")
         self.assertTrue(codex_meta["requires_key"])
         self.assertTrue(codex_meta["supports_base_url"])
+
+        # Check openrouter
+        router_meta = PROVIDERS["openrouter"]
+        self.assertEqual(router_meta["kind"], "openai")
+        self.assertEqual(router_meta["base_url"], "https://openrouter.ai/api/v1")
+        self.assertEqual(router_meta["default_model"], "anthropic/claude-3.5-sonnet")
+        self.assertTrue(router_meta["requires_key"])
+        self.assertTrue(router_meta["supports_base_url"])
 
 
 if __name__ == "__main__":

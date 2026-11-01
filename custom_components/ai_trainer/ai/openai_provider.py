@@ -31,6 +31,9 @@ class OpenAIProvider(AIProvider):
         headers = {"Content-Type": "application/json"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
+        if "openrouter" in (self.base_url or ""):
+            headers["HTTP-Referer"] = "https://github.com/volski/MyAiTrainer"
+            headers["X-Title"] = "AI Personal Trainer"
         return headers
 
     async def complete(
