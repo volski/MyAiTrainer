@@ -451,5 +451,38 @@ class CaloriePromptTests(unittest.TestCase):
             self.assertNotEqual(messages[i]["role"], messages[i + 1]["role"])
 
 
+class ProviderTests(unittest.TestCase):
+    def test_providers_catalogue(self):
+        from const import PROVIDERS
+
+        self.assertIn("grok", PROVIDERS)
+        self.assertIn("opencode", PROVIDERS)
+        self.assertIn("codex", PROVIDERS)
+
+        # Check grok
+        grok_meta = PROVIDERS["grok"]
+        self.assertEqual(grok_meta["kind"], "openai")
+        self.assertEqual(grok_meta["base_url"], "https://api.x.ai/v1")
+        self.assertEqual(grok_meta["default_model"], "grok-2-latest")
+        self.assertTrue(grok_meta["requires_key"])
+        self.assertTrue(grok_meta["supports_base_url"])
+
+        # Check opencode
+        oc_meta = PROVIDERS["opencode"]
+        self.assertEqual(oc_meta["kind"], "openai")
+        self.assertEqual(oc_meta["base_url"], "https://opencode.ai/inference/openai/v1")
+        self.assertEqual(oc_meta["default_model"], "claude-3-5-sonnet")
+        self.assertTrue(oc_meta["requires_key"])
+        self.assertTrue(oc_meta["supports_base_url"])
+
+        # Check codex
+        codex_meta = PROVIDERS["codex"]
+        self.assertEqual(codex_meta["kind"], "openai")
+        self.assertEqual(codex_meta["base_url"], "https://api.openai.com/v1")
+        self.assertEqual(codex_meta["default_model"], "gpt-4o")
+        self.assertTrue(codex_meta["requires_key"])
+        self.assertTrue(codex_meta["supports_base_url"])
+
+
 if __name__ == "__main__":
     unittest.main()

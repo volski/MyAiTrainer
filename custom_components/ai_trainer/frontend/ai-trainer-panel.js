@@ -1113,6 +1113,10 @@ class AITrainerPanel extends HTMLElement {
     }
     const baseRow = form.querySelector('[data-field="base_url"]');
     if (baseRow) baseRow.style.display = meta.supports_base_url ? "" : "none";
+    const baseInput = form.elements.namedItem("base_url");
+    if (baseInput) {
+      baseInput.placeholder = meta.base_url || "http://homeassistant.local:11434";
+    }
     const hint = form.querySelector("[data-provider-hint]");
     if (hint) {
       const keyNote = meta.requires_key ? "נדרש מפתח API." : "לא נדרש מפתח API.";

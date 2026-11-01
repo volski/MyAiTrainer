@@ -13,7 +13,7 @@ from typing import Any, Final
 
 DOMAIN: Final = "ai_trainer"
 NAME: Final = "AI Trainer"
-VERSION: Final = "1.0.24"
+VERSION: Final = "1.0.25"
 
 # Frontend
 PANEL_URL: Final = "ai-trainer"
@@ -95,6 +95,30 @@ PROVIDERS: Final[dict[str, dict[str, Any]]] = {
         "requires_key": True,
         "supports_base_url": True,
         "base_url": "https://api.deepseek.com/v1",
+        "kind": "openai",
+    },
+    "grok": {
+        "label": "xAI (Grok)",
+        "default_model": "grok-2-latest",
+        "requires_key": True,
+        "supports_base_url": True,
+        "base_url": "https://api.x.ai/v1",
+        "kind": "openai",
+    },
+    "opencode": {
+        "label": "OpenCode",
+        "default_model": "claude-3-5-sonnet",
+        "requires_key": True,
+        "supports_base_url": True,
+        "base_url": "https://opencode.ai/inference/openai/v1",
+        "kind": "openai",
+    },
+    "codex": {
+        "label": "Codex",
+        "default_model": "gpt-4o",
+        "requires_key": True,
+        "supports_base_url": True,
+        "base_url": "https://api.openai.com/v1",
         "kind": "openai",
     },
     "ollama": {

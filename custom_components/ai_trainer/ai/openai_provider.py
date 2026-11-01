@@ -20,6 +20,8 @@ class OpenAIProvider(AIProvider):
 
     def _url(self) -> str:
         base = (self.base_url or DEFAULT_BASE).rstrip("/")
+        if base.endswith("/chat/completions"):
+            return base
         parsed = urlparse(base)
         if not parsed.path or parsed.path == "/":
             base = f"{base}/v1"
