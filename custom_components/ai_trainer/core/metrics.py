@@ -97,6 +97,154 @@ def _round_to(value: float, step: int) -> int:
     return int(round(value / step) * step)
 
 
+def healthy_weight_range(height_cm: float | None) -> tuple[float, float] | None:
+    """Return healthy weight range (min_kg, max_kg) based on standard BMI 18.5 - 24.9."""
+    if not height_cm or height_cm <= 0:
+        return None
+    h_m = float(height_cm) / 100.0
+    min_w = round(18.5 * h_m * h_m, 1)
+    max_w = round(24.9 * h_m * h_m, 1)
+    return (min_w, max_w)
+
+
+def build_weight_plan(
+    current_weight: float | None,
+    target_weight: float | None,
+    height_cm: float | None,
+    sex: str = "unspecified",
+    age: int = 30,
+    goal: str = "lose_weight",
+) -> dict[str, Any]:
+    """Generate a realistic milestones-based roadmap to arrive at the target weight."""
+    if not current_weight:
+        return {}
+
+    target = target_weight if target_weight else current_weight
+    delta = round(target - current_weight, 1)
+
+    h_range = healthy_weight_range(height_cm)
+    curr_bmi = calculate_bmi(current_weight, height_cm)
+    target_bmi = calculate_bmi(target, height_cm)
+
+    if delta <= -0.5:
+        direction = "lose"
+        abs_delta = abs(delta)
+        # Safe sustainable rate: ~0.5 - 0.75 kg/week
+        rate = 0.6
+        weeks = max(2, int(round(abs_delta / rate)))
+
+        if abs_delta <= 3.0:
+            count = 2
+        elif abs_delta <= 8.0:
+            count = 3
+        else:
+            count = 4
+
+        step_kg = abs_delta / count
+        milestones = []
+        if count == 2:
+            descriptions = [
+                "הקניית הרגלי שתייה, סדר בארוחות והורדת נוזלים ראשונית",
+                "הגעה למשקל היעד, חגיגת ההישג ומעבר לשלב השמירה (Maintenance)",
+            ]
+        elif count == 3:
+            descriptions = [
+                "ירידה ראשונית, הסדרת זמני ארוחות והקפדה על שתיית מים",
+                "הגברת שריפת שומן, שימור שריר באימונים ושיפור אנרגיה",
+                "הגעה למשקל היעד וייצוב ההישג לטווח ארוך",
+            ]
+        else:
+            descriptions = [
+                "הרגלי שתייה, סדר בארוחות, גירעון קלורי מתון והורדת נוזלים ראשונית",
+                "נקודת האמצע! שמירה על מסת שריר בעזרת אימוני כוח והתמדה בתפריט",
+                "הישורת האחרונה, הגברת צעדים יומית ודיוק בכמויות החלבון",
+                "הגעה למשקל היעד, חגיגת ההישג ומעבר לשלב השמירה (Maintenance)",
+            ]
+
+        for i in range(1, count + 1):
+            if i == count:
+                m_weight = target
+                m_delta = delta
+            else:
+                m_loss = round(i * step_kg, 1)
+                m_weight = round(current_weight - m_loss, 1)
+                m_delta = round(-m_loss, 1)
+            milestones.append(
+                {
+                    "step": i,
+                    "weight_kg": m_weight,
+                    "delta_kg": m_delta,
+                    "title": f"אבן דרך {i}",
+                    "description": descriptions[i - 1],
+                }
+            )
+
+    elif delta >= 0.5:
+        direction = "gain"
+        abs_delta = delta
+        # Safe muscle gain rate: ~0.25 - 0.35 kg/week
+        rate = 0.3
+        weeks = max(2, int(round(abs_delta / rate)))
+        count = 2 if abs_delta <= 4.0 else 3
+        step_kg = abs_delta / count
+        descriptions = [
+            "הגעה לעודף קלורי איכותי, 1.6–2.0 גרם חלבון לק\"ג ואימוני כוח עקביים",
+            "עלייה נקייה במסת השריר ועומס יסף הדרגתי באימונים",
+            "הגעה למשקל היעד עם שיפור משמעותי במבנה הגוף ובכוח",
+        ]
+        milestones = []
+        for i in range(1, count + 1):
+            if i == count:
+                m_weight = target
+                m_delta = delta
+            else:
+                m_gain = round(i * step_kg, 1)
+                m_weight = round(current_weight + m_gain, 1)
+                m_delta = round(m_gain, 1)
+            milestones.append(
+                {
+                    "step": i,
+                    "weight_kg": m_weight,
+                    "delta_kg": m_delta,
+                    "title": f"אבן דרך {i}",
+                    "description": descriptions[i - 1],
+                }
+            )
+
+    else:
+        direction = "maintain"
+        weeks = 4
+        milestones = [
+            {
+                "step": 1,
+                "weight_kg": current_weight,
+                "delta_kg": 0.0,
+                "title": "ייצוב והרגלים",
+                "description": "איזון קלורי ניטרלי, שתיית מים מלאה ו-3 אימונים שבועיים",
+            },
+            {
+                "step": 2,
+                "weight_kg": current_weight,
+                "delta_kg": 0.0,
+                "title": "חיטוב וחיזוק (Recomposition)",
+                "description": "הפחתת אחוזי שומן והעלאת טונוס שרירי תוך שמירה על המשקל",
+            },
+        ]
+
+    return {
+        "current_weight": current_weight,
+        "target_weight": target,
+        "delta_kg": delta,
+        "direction": direction,
+        "estimated_weeks": weeks,
+        "current_bmi": curr_bmi,
+        "target_bmi": target_bmi,
+        "healthy_weight_min": h_range[0] if h_range else None,
+        "healthy_weight_max": h_range[1] if h_range else None,
+        "milestones": milestones,
+    }
+
+
 def targets_for(profile: dict[str, Any]) -> dict[str, Any]:
     """Compute BMI, energy, protein, water and activity targets.
 
@@ -121,6 +269,10 @@ def targets_for(profile: dict[str, Any]) -> dict[str, Any]:
         "goal_label": goal_label(goal),
         "activity": activity,
         "activity_label": activity_label(activity),
+        "target_weight_kg": _as_float(profile.get("target_weight_kg")),
+        "target_bmi": calculate_bmi(_as_float(profile.get("target_weight_kg")), height),
+        "healthy_weight_min": healthy_weight_range(height)[0] if healthy_weight_range(height) else None,
+        "healthy_weight_max": healthy_weight_range(height)[1] if healthy_weight_range(height) else None,
         "bmr": None,
         "tdee": None,
         "calories": None,

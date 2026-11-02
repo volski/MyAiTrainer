@@ -23,7 +23,12 @@ INTEGRATION_DIR = Path(__file__).resolve().parent.parent / "custom_components" /
 if str(INTEGRATION_DIR) not in sys.path:
     sys.path.insert(0, str(INTEGRATION_DIR))
 
-from core.metrics import calculate_bmi, targets_for  # noqa: E402
+from core.metrics import (  # noqa: E402
+    build_weight_plan,
+    calculate_bmi,
+    healthy_weight_range,
+    targets_for,
+)
 from core.models import ensure_user_shape, new_user, normalize_phone  # noqa: E402
 from core.onboarding import apply_onboarding_answer, start_onboarding  # noqa: E402
 from core.plan import (  # noqa: E402
@@ -42,9 +47,11 @@ from core.text import (  # noqa: E402
     is_negative,
     is_question,
     is_water_decrease,
+    parse_age_or_dob,
     parse_calories_entry,
     parse_goal,
     parse_height_cm,
+    parse_sex,
     parse_water_cups,
     parse_weight_kg,
     split_message,
@@ -93,6 +100,31 @@ class ParsingTests(unittest.TestCase):
     def test_height_out_of_range(self):
         self.assertIsNone(parse_height_cm("60"))
         self.assertIsNone(parse_height_cm(""))
+
+    def test_parse_sex(self):
+        self.assertEqual(parse_sex("1"), "male")
+        self.assertEqual(parse_sex("2"), "female")
+        self.assertEqual(parse_sex("גבר"), "male")
+        self.assertEqual(parse_sex("זכר"), "male")
+        self.assertEqual(parse_sex("אישה"), "female")
+        self.assertEqual(parse_sex("נקבה"), "female")
+        self.assertEqual(parse_sex("בחור"), "male")
+        self.assertEqual(parse_sex("בחורה"), "female")
+        self.assertEqual(parse_sex("male"), "male")
+        self.assertEqual(parse_sex("female"), "female")
+        self.assertIsNone(parse_sex("משהו אחר"))
+        self.assertIsNone(parse_sex(""))
+
+    def test_parse_age_or_dob(self):
+        self.assertEqual(parse_age_or_dob("28"), 28)
+        self.assertEqual(parse_age_or_dob("בן 35"), 35)
+        self.assertEqual(parse_age_or_dob("בת 42"), 42)
+        self.assertEqual(parse_age_or_dob("גיל 25"), 25)
+        self.assertEqual(parse_age_or_dob("15/04/1990", current_year=2026), 36)
+        self.assertEqual(parse_age_or_dob("1996", current_year=2026), 30)
+        self.assertIsNone(parse_age_or_dob("150"))
+        self.assertIsNone(parse_age_or_dob("5"))
+        self.assertIsNone(parse_age_or_dob("לא יודע"))
 
     def test_water_cups(self):
         self.assertEqual(parse_water_cups("2"), 2.0)
@@ -288,6 +320,60 @@ class MetricsTests(unittest.TestCase):
         self.assertIsNone(targets["calories"])
         self.assertEqual(targets["goal_label"], "אורח חיים בריא")
 
+    def test_healthy_weight_range(self):
+        self.assertIsNone(healthy_weight_range(None))
+        self.assertIsNone(healthy_weight_range(0))
+        rng = healthy_weight_range(180)
+        self.assertIsNotNone(rng)
+        min_w, max_w = rng
+        self.assertAlmostEqual(min_w, 59.9, places=1)
+        self.assertAlmostEqual(max_w, 80.7, places=1)
+
+    def test_build_weight_plan_loss(self):
+        plan = build_weight_plan(
+            current_weight=90.0,
+            target_weight=80.0,
+            height_cm=180,
+            sex="male",
+            age=30,
+            goal="lose_weight",
+        )
+        self.assertIsNotNone(plan)
+        self.assertEqual(plan["direction"], "lose")
+        self.assertEqual(plan["delta_kg"], -10.0)
+        self.assertGreaterEqual(len(plan["milestones"]), 2)
+        # Final milestone should reach target weight
+        self.assertEqual(plan["milestones"][-1]["weight_kg"], 80.0)
+        self.assertGreater(plan["estimated_weeks"], 0)
+
+    def test_build_weight_plan_gain(self):
+        plan = build_weight_plan(
+            current_weight=60.0,
+            target_weight=70.0,
+            height_cm=180,
+            sex="male",
+            age=25,
+            goal="build_muscle",
+        )
+        self.assertIsNotNone(plan)
+        self.assertEqual(plan["direction"], "gain")
+        self.assertEqual(plan["delta_kg"], 10.0)
+        self.assertGreaterEqual(len(plan["milestones"]), 2)
+        self.assertEqual(plan["milestones"][-1]["weight_kg"], 70.0)
+
+    def test_build_weight_plan_maintain(self):
+        plan = build_weight_plan(
+            current_weight=75.0,
+            target_weight=75.0,
+            height_cm=175,
+            sex="female",
+            age=28,
+            goal="health",
+        )
+        self.assertIsNotNone(plan)
+        self.assertEqual(plan["direction"], "maintain")
+        self.assertEqual(len(plan["milestones"]), 2)
+
 
 class OnboardingTests(unittest.TestCase):
     def test_full_flow(self):
@@ -296,20 +382,41 @@ class OnboardingTests(unittest.TestCase):
         self.assertIn("המאמן", welcome)
         self.assertEqual(user["onboarding_step"], "goal")
 
+        # Step 1: Goal
         result = apply_onboarding_answer(user, "1")
-        self.assertEqual(result["step"], "weight")
+        self.assertEqual(result["step"], "sex")
         self.assertEqual(user["profile"]["goal"], "lose_weight")
 
-        result = apply_onboarding_answer(user, "82.5")
-        self.assertEqual(result["step"], "height")
-        self.assertEqual(user["profile"]["weight_kg"], 82.5)
-        self.assertEqual(user["profile"]["start_weight_kg"], 82.5)
+        # Step 2: Sex
+        result = apply_onboarding_answer(user, "גבר")
+        self.assertEqual(result["step"], "age")
+        self.assertEqual(user["profile"]["sex"], "male")
 
+        # Step 3: Age
+        result = apply_onboarding_answer(user, "28")
+        self.assertEqual(result["step"], "weight")
+        self.assertEqual(user["profile"]["age"], 28)
+
+        # Step 4: Weight
+        result = apply_onboarding_answer(user, "90.0")
+        self.assertEqual(result["step"], "height")
+        self.assertEqual(user["profile"]["weight_kg"], 90.0)
+        self.assertEqual(user["profile"]["start_weight_kg"], 90.0)
+
+        # Step 5: Height
         result = apply_onboarding_answer(user, "1.80")
-        self.assertTrue(result["completed"])
+        self.assertEqual(result["step"], "target_weight")
         self.assertEqual(user["profile"]["height_cm"], 180)
+
+        # Step 6: Target Weight
+        result = apply_onboarding_answer(user, "80")
+        self.assertTrue(result["completed"])
+        self.assertEqual(user["profile"]["target_weight_kg"], 80.0)
         self.assertEqual(user["status"], "active")
+        self.assertEqual(user["onboarding_step"], "done")
         self.assertIn("BMI", result["reply"])
+        self.assertIn("אבני הדרך", result["reply"])
+        self.assertIn("יעד", result["reply"])
 
     def test_free_text_goal_is_kept(self):
         user = new_user("972501234567", "", "", "x", "y")
@@ -317,6 +424,21 @@ class OnboardingTests(unittest.TestCase):
         self.assertFalse(result["completed"])
         self.assertEqual(user["profile"]["goal"], "health")
         self.assertIn("אנרגטי", user["profile"]["goal_text"])
+        self.assertEqual(result["step"], "sex")
+
+    def test_invalid_sex_keeps_step(self):
+        user = new_user("972501234567", "", "", "x", "y")
+        user["onboarding_step"] = "sex"
+        result = apply_onboarding_answer(user, "לא מוגדר")
+        self.assertTrue(result["error"])
+        self.assertEqual(user["onboarding_step"], "sex")
+
+    def test_invalid_age_keeps_step(self):
+        user = new_user("972501234567", "", "", "x", "y")
+        user["onboarding_step"] = "age"
+        result = apply_onboarding_answer(user, "בן 200")
+        self.assertTrue(result["error"])
+        self.assertEqual(user["onboarding_step"], "age")
 
     def test_invalid_weight_keeps_step(self):
         user = new_user("972501234567", "", "", "x", "y")
@@ -324,6 +446,13 @@ class OnboardingTests(unittest.TestCase):
         result = apply_onboarding_answer(user, "כבד מאוד")
         self.assertTrue(result["error"])
         self.assertEqual(user["onboarding_step"], "weight")
+
+    def test_invalid_target_weight_keeps_step(self):
+        user = new_user("972501234567", "", "", "x", "y")
+        user["onboarding_step"] = "target_weight"
+        result = apply_onboarding_answer(user, "משקל סודי")
+        self.assertTrue(result["error"])
+        self.assertEqual(user["onboarding_step"], "target_weight")
 
     def test_one_word_goal_rejected(self):
         user = new_user("972501234567", "", "", "x", "y")

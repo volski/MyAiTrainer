@@ -129,6 +129,74 @@ def parse_height_cm(text: Any) -> int | None:
     return int(round(number))
 
 
+def parse_sex(text: Any) -> str | None:
+    """Parse biological sex / gender from Hebrew or English.
+
+    Returns ``'male'``, ``'female'``, or ``None`` when unrecognised.
+    """
+    value = normalise_hebrew(text).strip()
+    if not value:
+        return None
+
+    # Handle numeric choice: 1 for male, 2 for female
+    if value == "1":
+        return "male"
+    if value == "2":
+        return "female"
+
+    # Female indicators
+    if re.search(r"\b(אישה|אשה|נקבה|בחורה|בת|נשים|female|woman|girl|femme|f)\b", value):
+        return "female"
+
+    # Male indicators
+    if re.search(r"\b(גבר|זכר|בחור|בן|איש|גברים|male|man|boy|homme|m)\b", value):
+        return "male"
+
+    return None
+
+
+def parse_age_or_dob(text: Any, current_year: int | None = None) -> int | None:
+    """Parse an age in years or birth date/year (range 12–100)."""
+    if current_year is None:
+        current_year = date.today().year
+
+    value = normalise_hebrew(text).strip()
+    if not value:
+        return None
+
+    # Check for DD/MM/YYYY or DD.MM.YYYY or DD-MM-YYYY
+    match_dob = re.search(r"\b(\d{1,2})[./\-](\d{1,2})[./\-](\d{4})\b", value)
+    if match_dob:
+        year = int(match_dob.group(3))
+        age = current_year - year
+        if 12 <= age <= 100:
+            return age
+
+    # Check for YYYY-MM-DD
+    match_iso = re.search(r"\b(\d{4})[./\-](\d{1,2})[./\-](\d{1,2})\b", value)
+    if match_iso:
+        year = int(match_iso.group(1))
+        age = current_year - year
+        if 12 <= age <= 100:
+            return age
+
+    # Check for 4-digit birth year (1920-2015)
+    match_year = re.search(r"\b(19\d{2}|20[0-1]\d)\b", value)
+    if match_year:
+        year = int(match_year.group(1))
+        age = current_year - year
+        if 12 <= age <= 100:
+            return age
+
+    # Check for direct integer age (e.g. 28, בן 35, בת 42, גיל 25)
+    for part in re.findall(r"\b(\d{1,3})\b", value):
+        num = int(part)
+        if 12 <= num <= 100:
+            return num
+
+    return None
+
+
 def parse_water_cups(text: Any) -> float | None:
     """Parse a water amount and return it in 250 ml cups."""
     value = normalise_hebrew(text)

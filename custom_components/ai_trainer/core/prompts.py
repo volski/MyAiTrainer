@@ -70,8 +70,14 @@ def system_prompt(
         f"שם המשתמש: {name}.",
         f"מטרה: {goal}.",
     ]
+    if profile.get("sex") and profile["sex"] in {"male", "female"}:
+        parts.append(f"מין: {'גבר' if profile['sex'] == 'male' else 'אישה'}.")
+    if profile.get("age"):
+        parts.append(f"גיל: {profile['age']}.")
     if profile.get("weight_kg"):
-        parts.append(f"משקל: {profile['weight_kg']} ק\"ג.")
+        parts.append(f"משקל נוכחי: {profile['weight_kg']} ק\"ג.")
+    if profile.get("target_weight_kg"):
+        parts.append(f"משקל יעד: {profile['target_weight_kg']} ק\"ג.")
     if profile.get("height_cm"):
         parts.append(f"גובה: {profile['height_cm']} ס\"מ.")
     if targets.get("bmi"):

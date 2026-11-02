@@ -1489,6 +1489,17 @@ class TrainerAgent:
             sign = "−" if delta < 0 else ("+" if delta > 0 else "")
             weight_line = f"{start} → {current} ק\"ג ({sign}{abs(delta)})"
 
+        target_w = profile.get("target_weight_kg")
+        target_line = ""
+        if target_w and current:
+            delta_target = round(float(target_w) - float(current), 1)
+            if abs(delta_target) < 0.1:
+                target_line = f"🏁 יעד: {target_w} ק\"ג (הגעת ליעד! 🎉)"
+            elif delta_target < 0:
+                target_line = f"🏁 יעד: {target_w} ק\"ג (נותרו עוד {abs(delta_target):g} ק\"ג לירידה)"
+            else:
+                target_line = f"🏁 יעד: {target_w} ק\"ג (נותרו עוד {delta_target:g} ק\"ג לעלייה)"
+
         water_done = int(stats.get("water_ml_today") or 0)
         water_target = int(targets.get("water_ml") or 2500)
         cal_done = int(stats.get("calories_today") or 0)
@@ -1504,6 +1515,8 @@ class TrainerAgent:
             f"🎯 מטרה: {profile.get('goal_text') or targets.get('goal_label')}",
             f"⚖️ משקל: {weight_line}",
         ]
+        if target_line:
+            lines.append(target_line)
         if targets.get("bmi"):
             lines.append(f"📊 BMI: {targets['bmi']} — {targets['bmi_category']}")
         if cal_target:
