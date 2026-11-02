@@ -737,6 +737,32 @@ class TrainerAgent:
         )
         return None
 
+    @staticmethod
+    def _prepare_image_for_ai(
+        image_bytes: bytes, mime_type: str = "image/jpeg", max_dim: int = 1536
+    ) -> tuple[bytes, str]:
+        """Downscale and compress images for AI vision APIs to avoid payload limits and timeouts."""
+        try:
+            import io
+
+            from PIL import Image, ImageOps
+
+            with Image.open(io.BytesIO(image_bytes)) as img:
+                img = ImageOps.exif_transpose(img)
+                if img.mode not in ("RGB", "L"):
+                    img = img.convert("RGB")
+                w, h = img.size
+                if max(w, h) > max_dim:
+                    img.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
+                out = io.BytesIO()
+                img.save(out, format="JPEG", quality=85, optimize=True)
+                compressed = out.getvalue()
+                if len(compressed) < len(image_bytes):
+                    return compressed, "image/jpeg"
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.debug("Image preprocessing skipped: %s", err)
+        return image_bytes, mime_type
+
     async def _async_image_calorie(
         self,
         user: dict[str, Any],
@@ -766,6 +792,8 @@ class TrainerAgent:
         if not mime.startswith("image/"):
             mime = "image/jpeg"
 
+        image_bytes, mime = self._prepare_image_for_ai(image_bytes, mime)
+
         system, prompt = calorie_analysis_prompt(user, caption=text)
         await self._throttle_ai(user)
 
@@ -781,11 +809,35 @@ class TrainerAgent:
         except AIError as err:
             _LOGGER.warning("AI Trainer image calorie analysis failed: %s", err)
             self.runtime.logs.error("ai_error", str(err), phone)
-            await self.async_send(
-                user,
-                "מצטער, הייתה בעיה בניתוח התמונה מול ספק ה-AI 🙏 נסו שוב בעוד רגע.",
-                target,
-            )
+            err_msg = str(err).strip()
+            p_name = getattr(provider, "name", "AI")
+            p_model = getattr(provider, "model", "")
+            if "תומך" in err_msg or "support" in err_msg.lower() or "vision" in err_msg.lower():
+                reply = (
+                    f"ספק ה-AI הנוכחי ({p_name} / {p_model}) אינו תומך בניתוח תמונות 🙏\n"
+                    "אפשר לעבור בהגדרות ל-Google Gemini או OpenAI (GPT-4o), או לכתוב לי במילים מה אכלתם."
+                )
+            elif "401" in err_msg or "מפתח" in err_msg:
+                reply = (
+                    "מפתח ה-API של ספק ה-AI נדחה (401) 🙏\n"
+                    "יש לעדכן את המפתח בהגדרות AI Trainer בלוח הבקרה."
+                )
+            elif "429" in err_msg or "מגבלת קצב" in err_msg:
+                reply = (
+                    "הספק החזיר מגבלת קצב או מכסה (429) 🙏\n"
+                    "נסו שוב בעוד כמה דקות, או כתבו לי במילים מה אכלתם."
+                )
+            elif "404" in err_msg or "not found" in err_msg.lower():
+                reply = (
+                    f"המודל '{p_model}' לא נמצא אצל ספק ה-AI (404) 🙏\n"
+                    "בדקו את שם המודל בהגדרות AI Trainer ב-Home Assistant."
+                )
+            else:
+                reply = (
+                    f"מצטער, הייתה בעיה בניתוח התמונה מול ספק ה-AI ({err_msg}) 🙏\n"
+                    "תוכלו לכתוב לי במילים מה אכלתם ואתעד זאת בשמחה."
+                )
+            await self.async_send(user, reply, target)
             return
         except Exception as err:  # noqa: BLE001
             _LOGGER.exception("AI Trainer unexpected image analysis failure")

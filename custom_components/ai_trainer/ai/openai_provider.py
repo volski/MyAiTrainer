@@ -75,6 +75,16 @@ class OpenAIProvider(AIProvider):
     ) -> str:
         if not self.ready:
             raise AIError("ספק ה-AI לא מוגדר במלואו (חסר מפתח או מודל).")
+
+        model = self.model
+        if "deepseek" in model.lower() and "deepseek-chat" in model.lower():
+            raise AIError(
+                "מודל DeepSeek הנוכחי (deepseek-chat) תומך בטקסט בלבד ואינו תומך בניתוח תמונות. "
+                "מומלץ לעבור ל-Google Gemini או OpenAI בהגדרות, או לכתוב לי במילים מה אכלתם."
+            )
+        if model == "grok-2-latest":
+            model = "grok-2-vision-1212"
+
         b64 = base64.b64encode(image_bytes).decode("ascii")
         data_url = f"data:{mime_type};base64,{b64}"
         messages = [
@@ -88,17 +98,17 @@ class OpenAIProvider(AIProvider):
             },
         ]
         payload: dict[str, Any] = {
-            "model": self.model,
+            "model": model,
             "messages": messages,
             "temperature": self.temperature,
-            "max_tokens": self.max_tokens,
+            "max_tokens": max(1000, self.max_tokens),
         }
         if json_mode:
             payload["response_format"] = {"type": "json_object"}
         try:
             data = await self._post_json(self._url(), payload, self._headers())
         except AIError as err:
-            if json_mode and err.status == 400:
+            if json_mode and err.status in {400, 422}:
                 payload.pop("response_format", None)
                 data = await self._post_json(self._url(), payload, self._headers())
             else:

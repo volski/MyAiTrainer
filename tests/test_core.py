@@ -20,8 +20,11 @@ from datetime import date
 from pathlib import Path
 
 INTEGRATION_DIR = Path(__file__).resolve().parent.parent / "custom_components" / "ai_trainer"
+CUSTOM_COMPONENTS_DIR = Path(__file__).resolve().parent.parent / "custom_components"
+if str(CUSTOM_COMPONENTS_DIR) not in sys.path:
+    sys.path.insert(0, str(CUSTOM_COMPONENTS_DIR))
 if str(INTEGRATION_DIR) not in sys.path:
-    sys.path.insert(0, str(INTEGRATION_DIR))
+    sys.path.append(str(INTEGRATION_DIR))
 
 from core.metrics import (  # noqa: E402
     build_weight_plan,
@@ -620,6 +623,48 @@ class ProviderTests(unittest.TestCase):
         self.assertEqual(router_meta["default_model"], "anthropic/claude-3.5-sonnet")
         self.assertTrue(router_meta["requires_key"])
         self.assertTrue(router_meta["supports_base_url"])
+
+        # Check google
+        google_meta = PROVIDERS["google"]
+        self.assertEqual(google_meta["default_model"], "gemini-2.0-flash")
+
+    def test_google_extract_text_filters_thoughts(self):
+        from ai_trainer.ai.google_provider import GoogleProvider
+
+        data = {
+            "candidates": [
+                {
+                    "content": {
+                        "parts": [
+                            {"thought": True, "text": "I am thinking about the calories..."},
+                            {"text": '{"item": "חביתה", "kcal": 250}'},
+                        ]
+                    }
+                }
+            ]
+        }
+        extracted = GoogleProvider._extract_text(data)
+        self.assertEqual(extracted, '{"item": "חביתה", "kcal": 250}')
+
+    def test_google_extract_text_max_tokens(self):
+        from ai_trainer.ai.base import AIError
+        from ai_trainer.ai.google_provider import GoogleProvider
+
+        data = {
+            "candidates": [
+                {
+                    "finishReason": "MAX_TOKENS",
+                    "content": {
+                        "parts": [
+                            {"thought": True, "text": "I am thinking..."},
+                        ]
+                    },
+                }
+            ]
+        }
+        with self.assertRaises(AIError) as ctx:
+            GoogleProvider._extract_text(data)
+        self.assertIn("MAX_TOKENS", str(ctx.exception))
 
 
 if __name__ == "__main__":

@@ -94,7 +94,7 @@ class GoogleProvider(AIProvider):
 
         generation_config: dict[str, Any] = {
             "temperature": self.temperature,
-            "maxOutputTokens": self.max_tokens,
+            "maxOutputTokens": max(1500, self.max_tokens),
         }
         if json_mode:
             generation_config["responseMimeType"] = "application/json"
@@ -117,7 +117,14 @@ class GoogleProvider(AIProvider):
             ],
             "generationConfig": generation_config,
         }
-        data = await self._post_json(self._url(), payload, {"Content-Type": "application/json"})
+        try:
+            data = await self._post_json(self._url(), payload, {"Content-Type": "application/json"})
+        except AIError as err:
+            if json_mode and err.status in {400, 422}:
+                generation_config.pop("responseMimeType", None)
+                data = await self._post_json(self._url(), payload, {"Content-Type": "application/json"})
+            else:
+                raise
         return self._extract_text(data)
 
     @staticmethod
@@ -135,9 +142,14 @@ class GoogleProvider(AIProvider):
         parts = content.get("parts") if isinstance(content, dict) else None
         if not isinstance(parts, list):
             raise AIError("הספק החזיר תשובה ריקה.")
+        # Filter out internal reasoning/thought parts
         text = "".join(
-            str(part.get("text") or "") for part in parts if isinstance(part, dict)
+            str(part.get("text") or "")
+            for part in parts
+            if isinstance(part, dict) and not part.get("thought")
         ).strip()
         if not text:
+            if candidate.get("finishReason") == "MAX_TOKENS":
+                raise AIError("הספק הגיע למגבלת אסימונים (MAX_TOKENS). הגדילו את max_tokens בהגדרות.")
             raise AIError("הספק החזיר תשובה ריקה.")
         return text

@@ -85,6 +85,12 @@ class AnthropicProvider(AIProvider):
     ) -> str:
         if not self.ready:
             raise AIError("ספק ה-AI לא מוגדר במלואו (חסר מפתח או מודל).")
+
+        model = self.model
+        if "haiku" in model.lower():
+            # Haiku is text-only; use Sonnet for vision
+            model = "claude-3-5-sonnet-latest"
+
         b64 = base64.b64encode(image_bytes).decode("ascii")
         media_type = mime_type or "image/jpeg"
         system_prompt = system
@@ -93,8 +99,8 @@ class AnthropicProvider(AIProvider):
                 "\n\nהחזר JSON תקין בלבד, בלי טקסט נוסף ובלי גדרות קוד."
             )
         payload: dict[str, Any] = {
-            "model": self.model,
-            "max_tokens": self.max_tokens,
+            "model": model,
+            "max_tokens": max(1000, self.max_tokens),
             "temperature": self.temperature,
             "system": system_prompt,
             "messages": [
