@@ -638,7 +638,7 @@ class ProviderTests(unittest.TestCase):
         oc_meta = PROVIDERS["opencode"]
         self.assertEqual(oc_meta["kind"], "openai")
         self.assertEqual(oc_meta["base_url"], "https://opencode.ai/inference/openai/v1")
-        self.assertEqual(oc_meta["default_model"], "claude-3-5-sonnet")
+        self.assertEqual(oc_meta["default_model"], "claude-sonnet-5.5")
         self.assertTrue(oc_meta["requires_key"])
         self.assertTrue(oc_meta["supports_base_url"])
 
@@ -654,7 +654,7 @@ class ProviderTests(unittest.TestCase):
         router_meta = PROVIDERS["openrouter"]
         self.assertEqual(router_meta["kind"], "openai")
         self.assertEqual(router_meta["base_url"], "https://openrouter.ai/api/v1")
-        self.assertEqual(router_meta["default_model"], "anthropic/claude-3.5-sonnet")
+        self.assertEqual(router_meta["default_model"], "anthropic/claude-sonnet-5.5")
         self.assertTrue(router_meta["requires_key"])
         self.assertTrue(router_meta["supports_base_url"])
 
@@ -690,7 +690,7 @@ class ProviderTests(unittest.TestCase):
             session=None, model="", base_url="https://openrouter.ai/api/v1", api_key=""
         )
         models = asyncio.run(or_prov.list_models())
-        self.assertTrue(any(m["id"] == "anthropic/claude-3.5-sonnet" for m in models))
+        self.assertTrue(any(m["id"] == "anthropic/claude-sonnet-5.5" for m in models))
 
         # Grok
         grok_prov = OpenAIProvider(
@@ -715,6 +715,28 @@ class ProviderTests(unittest.TestCase):
                 session=None,
             )
             self.assertEqual(prov.model, "gemini-3.8-flash")
+
+    def test_factory_migrates_retired_openrouter_and_opencode_models(self):
+        from ai_trainer.ai.factory import create_provider
+
+        for old_model in (
+            "anthropic/claude-3.5-sonnet",
+            "claude-3.5-sonnet",
+            "anthropic/claude-3-5-sonnet",
+            "anthropic/claude-3.5-sonnet-20241022",
+        ):
+            prov = create_provider(
+                {"provider": "openrouter", "model": old_model, "api_key": "k"},
+                session=None,
+            )
+            self.assertEqual(prov.model, "anthropic/claude-sonnet-5.5")
+
+        # OpenCode
+        prov_oc = create_provider(
+            {"provider": "opencode", "model": "claude-3-5-sonnet", "api_key": "k"},
+            session=None,
+        )
+        self.assertEqual(prov_oc.model, "claude-sonnet-5.5")
 
     def test_google_extract_text_filters_thoughts(self):
         from ai_trainer.ai.google_provider import GoogleProvider

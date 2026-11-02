@@ -13,7 +13,7 @@ from typing import Any, Final
 
 DOMAIN: Final = "ai_trainer"
 NAME: Final = "AI Trainer"
-VERSION: Final = "1.0.33"
+VERSION: Final = "1.0.34"
 
 # Frontend
 PANEL_URL: Final = "ai-trainer"
@@ -107,7 +107,7 @@ PROVIDERS: Final[dict[str, dict[str, Any]]] = {
     },
     "opencode": {
         "label": "OpenCode",
-        "default_model": "claude-3-5-sonnet",
+        "default_model": "claude-sonnet-5.5",
         "requires_key": True,
         "supports_base_url": True,
         "base_url": "https://opencode.ai/inference/openai/v1",
@@ -123,7 +123,7 @@ PROVIDERS: Final[dict[str, dict[str, Any]]] = {
     },
     "openrouter": {
         "label": "OpenRouter",
-        "default_model": "anthropic/claude-3.5-sonnet",
+        "default_model": "anthropic/claude-sonnet-5.5",
         "requires_key": True,
         "supports_base_url": True,
         "base_url": "https://openrouter.ai/api/v1",

@@ -53,6 +53,8 @@ def create_provider(
     kind = str(meta.get("kind") or "openai")
 
     model = str(settings.get(CONF_MODEL) or meta.get("default_model") or "").strip()
+    base_url = str(settings.get(CONF_BASE_URL) or meta.get("base_url") or "").strip()
+
     # Migrate retired Google model names to the current active default.
     if provider_id == "google" and model in {
         "gemini-2.0-flash",
@@ -63,7 +65,24 @@ def create_provider(
         "models/gemini-2.5-flash",
     }:
         model = str(meta.get("default_model") or "gemini-3.8-flash").strip()
-    base_url = str(settings.get(CONF_BASE_URL) or meta.get("base_url") or "").strip()
+
+    # Migrate retired OpenRouter model names to the current active default.
+    if (provider_id == "openrouter" or "openrouter.ai" in base_url.lower()) and model in {
+        "anthropic/claude-3.5-sonnet",
+        "claude-3.5-sonnet",
+        "anthropic/claude-3-5-sonnet",
+        "anthropic/claude-3.5-sonnet-20240620",
+        "anthropic/claude-3.5-sonnet-20241022",
+    }:
+        model = str(meta.get("default_model") or "anthropic/claude-sonnet-5.5").strip()
+
+    # Migrate retired OpenCode model names to current active default.
+    if (provider_id == "opencode" or "opencode.ai" in base_url.lower()) and model in {
+        "claude-3-5-sonnet",
+        "claude-3.5-sonnet",
+        "anthropic/claude-3.5-sonnet",
+    }:
+        model = str(meta.get("default_model") or "claude-sonnet-5.5").strip()
     api_key = str(settings.get(CONF_API_KEY) or "").strip()
     temperature = max(
         0.0,

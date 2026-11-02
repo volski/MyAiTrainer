@@ -168,8 +168,9 @@ class OpenAIProvider(AIProvider):
         url = (self.base_url or "").lower()
         if "openrouter" in url:
             return [
-                {"id": "anthropic/claude-3.5-sonnet", "name": "Claude 3.5 Sonnet (מומלץ)"},
+                {"id": "anthropic/claude-sonnet-5.5", "name": "Claude Sonnet 5.5 (מומלץ)"},
                 {"id": "google/gemini-3.8-flash", "name": "Google Gemini 3.8 Flash"},
+                {"id": "openrouter/auto", "name": "OpenRouter Auto (בחירה אוטומטית)"},
                 {"id": "openai/gpt-4o-mini", "name": "OpenAI GPT-4o Mini"},
                 {"id": "meta-llama/llama-3.3-70b-instruct", "name": "Meta Llama 3.3 70B"},
                 {"id": "deepseek/deepseek-chat", "name": "DeepSeek V3"},
@@ -187,7 +188,7 @@ class OpenAIProvider(AIProvider):
             ]
         if "opencode" in url:
             return [
-                {"id": "claude-3-5-sonnet", "name": "Claude 3.5 Sonnet (מומלץ)"},
+                {"id": "claude-sonnet-5.5", "name": "Claude Sonnet 5.5 (מומלץ)"},
                 {"id": "gpt-4o", "name": "GPT-4o"},
             ]
         return [

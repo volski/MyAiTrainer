@@ -269,7 +269,7 @@ details summary { cursor: pointer; font-weight: 700; font-size: 12px; color: var
 }
 `;
 
-const CURRENT_VERSION = "1.0.33";
+const CURRENT_VERSION = "1.0.34";
 
 const GOAL_LABELS = {
   lose_weight: "ירידה במשקל",
