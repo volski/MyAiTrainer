@@ -680,6 +680,32 @@ class ProviderTests(unittest.TestCase):
         ol_models = OllamaProvider.default_models()
         self.assertTrue(any(m["id"] == "llama3.1:8b" for m in ol_models))
 
+    def test_openai_list_models_without_key_returns_provider_defaults(self):
+        import asyncio
+
+        from ai_trainer.ai.openai_provider import OpenAIProvider
+
+        # OpenRouter
+        or_prov = OpenAIProvider(
+            session=None, model="", base_url="https://openrouter.ai/api/v1", api_key=""
+        )
+        models = asyncio.run(or_prov.list_models())
+        self.assertTrue(any(m["id"] == "anthropic/claude-3.5-sonnet" for m in models))
+
+        # Grok
+        grok_prov = OpenAIProvider(
+            session=None, model="", base_url="https://api.x.ai/v1", api_key=""
+        )
+        models = asyncio.run(grok_prov.list_models())
+        self.assertTrue(any(m["id"] == "grok-2-latest" for m in models))
+
+        # OpenAI
+        oa_prov = OpenAIProvider(
+            session=None, model="", base_url="https://api.openai.com/v1", api_key=""
+        )
+        models = asyncio.run(oa_prov.list_models())
+        self.assertTrue(any(m["id"] == "gpt-4o-mini" for m in models))
+
     def test_factory_migrates_retired_google_models(self):
         from ai_trainer.ai.factory import create_provider
 

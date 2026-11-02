@@ -269,7 +269,7 @@ details summary { cursor: pointer; font-weight: 700; font-size: 12px; color: var
 }
 `;
 
-const CURRENT_VERSION = "1.0.32";
+const CURRENT_VERSION = "1.0.33";
 
 const GOAL_LABELS = {
   lose_weight: "ירידה במשקל",
@@ -791,7 +791,7 @@ class AITrainerPanel extends HTMLElement {
       "</select></label>" +
       '<label class="field"><span>מודל</span>' +
       '<div style="display:flex;gap:6px;align-items:center;">' +
-      '<input name="model" list="models-datalist" value="' + esc(s.model || "") + '" placeholder="ברירת מחדל של הספק" style="flex:1">' +
+      '<input name="model" list="models-datalist" autocomplete="off" value="' + esc(s.model || "") + '" placeholder="ברירת מחדל של הספק" style="flex:1" onclick="this.select()">' +
       '<button type="button" class="btn small ghost" data-action="fetch-models" title="טען רשימת מודלים מהספק" style="white-space:nowrap;padding:7px 10px;font-size:12px">🔄 רענן מודלים</button>' +
       '</div><datalist id="models-datalist"></datalist></label>' +
       '<label class="field"><span>מפתח API</span><input name="api_key" type="password" autocomplete="new-password" placeholder="' +
@@ -1067,7 +1067,7 @@ class AITrainerPanel extends HTMLElement {
   // ------------------------------------------------------------------
   // UI helpers
   // ------------------------------------------------------------------
-  _syncProviderUi() {
+  _syncProviderUi(isUserChange = false) {
     const form = this._app && this._app.querySelector("#settings-form");
     if (!form) return;
     const select = form.elements.namedItem("provider");
@@ -1080,12 +1080,18 @@ class AITrainerPanel extends HTMLElement {
       modelInput.placeholder = meta.default_model
         ? "ברירת מחדל: " + meta.default_model
         : "שם מודל";
+      if (isUserChange) {
+        modelInput.value = meta.default_model || "";
+      }
     }
     const baseRow = form.querySelector('[data-field="base_url"]');
     if (baseRow) baseRow.style.display = meta.supports_base_url ? "" : "none";
     const baseInput = form.elements.namedItem("base_url");
     if (baseInput) {
       baseInput.placeholder = meta.base_url || "http://homeassistant.local:11434";
+      if (isUserChange) {
+        baseInput.value = meta.supports_base_url ? (meta.base_url || "") : "";
+      }
     }
     const hint = form.querySelector("[data-provider-hint]");
     if (hint) {
@@ -1109,6 +1115,7 @@ class AITrainerPanel extends HTMLElement {
 
     const datalist = form.querySelector("#models-datalist");
     if (!datalist) return;
+    datalist.innerHTML = "";
 
     try {
       const res = await this._api("/models", {
@@ -1374,7 +1381,7 @@ class AITrainerPanel extends HTMLElement {
       return;
     }
     if (target.name === "provider") {
-      this._syncProviderUi();
+      this._syncProviderUi(true);
     }
   }
 

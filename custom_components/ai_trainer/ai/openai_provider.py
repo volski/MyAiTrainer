@@ -126,6 +126,12 @@ class OpenAIProvider(AIProvider):
 
     async def list_models(self) -> list[dict[str, str]]:
         """List models from the OpenAI / compatible endpoint."""
+        if (
+            not self.api_key
+            and "localhost" not in (self.base_url or "")
+            and "127.0.0.1" not in (self.base_url or "")
+        ):
+            return self.default_models()
         url = self._models_url()
         headers = self._headers()
         try:

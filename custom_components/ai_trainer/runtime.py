@@ -318,13 +318,22 @@ class TrainerRuntime:
         base_url: str | None = None,
     ) -> list[dict[str, str]]:
         """List models available for a given or active provider."""
-        p_id = str(provider_id or self.settings.get(CONF_PROVIDER) or "google")
+        current_p = self.settings.get(CONF_PROVIDER) or "google"
+        p_id = str(provider_id or current_p)
         settings = dict(self.settings)
         settings[CONF_PROVIDER] = p_id
-        if api_key is not None and str(api_key).strip():
-            settings[CONF_API_KEY] = str(api_key).strip()
-        if base_url is not None and str(base_url).strip():
-            settings[CONF_BASE_URL] = str(base_url).strip()
+
+        # If provider_id is different from the saved active provider,
+        # do NOT reuse the old provider's api_key or base_url!
+        if provider_id and provider_id != current_p:
+            settings[CONF_API_KEY] = str(api_key or "").strip()
+            settings[CONF_BASE_URL] = str(base_url or "").strip()
+        else:
+            if api_key is not None and str(api_key).strip():
+                settings[CONF_API_KEY] = str(api_key).strip()
+            if base_url is not None and str(base_url).strip():
+                settings[CONF_BASE_URL] = str(base_url).strip()
+
         if not self._session or self._session.closed:
             self._session = aiohttp.ClientSession(
                 timeout=aiohttp.ClientTimeout(total=120)
