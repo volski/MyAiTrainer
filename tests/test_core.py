@@ -17,7 +17,41 @@ import re
 import sys
 import unittest
 from datetime import date
+from importlib.machinery import ModuleSpec
 from pathlib import Path
+from typing import Any
+from unittest.mock import MagicMock
+
+
+class _MockLoader:
+    def __init__(self, fullname: str) -> None:
+        self.fullname = fullname
+
+    def create_module(self, spec: ModuleSpec) -> MagicMock:
+        mod = MagicMock()
+        mod.__name__ = self.fullname
+        mod.__path__ = []
+        mod.__file__ = "<mock>"
+        return mod
+
+    def exec_module(self, module: MagicMock) -> None:
+        pass
+
+
+class _MockFinder:
+    """Mock Home Assistant and other external packages when not installed in test environment."""
+
+    @classmethod
+    def find_spec(
+        cls, fullname: str, path: Any = None, target: Any = None
+    ) -> ModuleSpec | None:
+        if fullname.startswith(("homeassistant", "aiohttp", "voluptuous")):
+            return ModuleSpec(fullname, _MockLoader(fullname), is_package=True)
+        return None
+
+
+if _MockFinder not in sys.meta_path:
+    sys.meta_path.append(_MockFinder)
 
 INTEGRATION_DIR = Path(__file__).resolve().parent.parent / "custom_components" / "ai_trainer"
 CUSTOM_COMPONENTS_DIR = Path(__file__).resolve().parent.parent / "custom_components"
