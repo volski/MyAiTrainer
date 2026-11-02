@@ -667,6 +667,53 @@ class TestView(HomeAssistantView):
         return self.json({"error": "Unknown test kind."}, status_code=400)
 
 
+class ModelsView(HomeAssistantView):
+    """List available models for a given AI provider."""
+
+    url = "/api/ai_trainer/models"
+    name = "api:ai_trainer:models"
+    requires_auth = True
+
+    async def get(self, request: web.Request) -> web.Response:
+        if not _is_admin(request):
+            return _forbidden()
+        runtime, error = await _runtime(request)
+        if error:
+            return error
+        assert runtime is not None
+
+        provider_id = request.query.get("provider")
+        api_key = request.query.get("api_key")
+        base_url = request.query.get("base_url")
+
+        models = await runtime.async_list_models(
+            provider_id=provider_id,
+            api_key=api_key,
+            base_url=base_url,
+        )
+        return self.json({"models": models})
+
+    async def post(self, request: web.Request) -> web.Response:
+        if not _is_admin(request):
+            return _forbidden()
+        runtime, error = await _runtime(request)
+        if error:
+            return error
+        assert runtime is not None
+
+        body = await _body(request)
+        provider_id = body.get("provider")
+        api_key = body.get("api_key")
+        base_url = body.get("base_url")
+
+        models = await runtime.async_list_models(
+            provider_id=provider_id,
+            api_key=api_key,
+            base_url=base_url,
+        )
+        return self.json({"models": models})
+
+
 class LogsView(HomeAssistantView):
     """Recent integration activity."""
 
@@ -690,6 +737,7 @@ class LogsView(HomeAssistantView):
 
 VIEW_CLASSES = (
     ConfigView,
+    ModelsView,
     UsersView,
     UserView,
     UserDeleteView,

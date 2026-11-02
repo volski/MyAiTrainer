@@ -17,6 +17,7 @@ from .agent import TrainerAgent
 from .ai import AIError, create_provider, provider_catalogue
 from .const import (
     CONF_API_KEY,
+    CONF_BASE_URL,
     CONF_COACH_NAME,
     CONF_MODEL,
     CONF_PROVIDER,
@@ -309,6 +310,27 @@ class TrainerRuntime:
             phone, f"🧪 בדיקה מ־AI Trainer\nשלום! אני {coach}, והחיבור עובד."
         )
         return {"ok": ok, "phone": phone}
+
+    async def async_list_models(
+        self,
+        provider_id: str | None = None,
+        api_key: str | None = None,
+        base_url: str | None = None,
+    ) -> list[dict[str, str]]:
+        """List models available for a given or active provider."""
+        p_id = str(provider_id or self.settings.get(CONF_PROVIDER) or "google")
+        settings = dict(self.settings)
+        settings[CONF_PROVIDER] = p_id
+        if api_key is not None and str(api_key).strip():
+            settings[CONF_API_KEY] = str(api_key).strip()
+        if base_url is not None and str(base_url).strip():
+            settings[CONF_BASE_URL] = str(base_url).strip()
+        if not self._session or self._session.closed:
+            self._session = aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=120)
+            )
+        temp_provider = create_provider(settings, self._session)
+        return await temp_provider.list_models()
 
     def find_user(self, identifier: str) -> dict[str, Any] | None:
         """Resolve a panel identifier (phone or internal id)."""

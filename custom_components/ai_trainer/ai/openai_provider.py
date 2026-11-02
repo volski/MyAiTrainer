@@ -27,6 +27,15 @@ class OpenAIProvider(AIProvider):
             base = f"{base}/v1"
         return f"{base}/chat/completions"
 
+    def _models_url(self) -> str:
+        base = (self.base_url or DEFAULT_BASE).rstrip("/")
+        if base.endswith("/chat/completions"):
+            base = base.removesuffix("/chat/completions")
+        parsed = urlparse(base)
+        if not parsed.path or parsed.path == "/":
+            base = f"{base}/v1"
+        return f"{base}/models"
+
     def _headers(self) -> dict[str, str]:
         headers = {"Content-Type": "application/json"}
         if self.api_key:
@@ -114,6 +123,72 @@ class OpenAIProvider(AIProvider):
             else:
                 raise
         return _openai_text(data)
+
+    async def list_models(self) -> list[dict[str, str]]:
+        """List models from the OpenAI / compatible endpoint."""
+        url = self._models_url()
+        headers = self._headers()
+        try:
+            import aiohttp
+
+            async with self.session.get(
+                url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)
+            ) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    items = data.get("data") or data.get("models") or []
+                    results = []
+                    for m in items:
+                        m_id = str(m.get("id") or m.get("name") or "").strip()
+                        if not m_id:
+                            continue
+                        # Filter out audio/embedding/moderation/image-only models for OpenAI
+                        if "api.openai.com" in url and any(
+                            m_id.startswith(pfx)
+                            for pfx in ("text-embedding", "dall-e", "whisper", "tts", "babbage", "davinci")
+                        ):
+                            continue
+                        name = str(m.get("name") or m_id).strip()
+                        results.append(
+                            {"id": m_id, "name": f"{name} ({m_id})" if name != m_id else m_id}
+                        )
+                    if results:
+                        return results
+        except Exception:  # noqa: BLE001
+            pass
+        return self.default_models()
+
+    def default_models(self) -> list[dict[str, str]]:
+        url = (self.base_url or "").lower()
+        if "openrouter" in url:
+            return [
+                {"id": "anthropic/claude-3.5-sonnet", "name": "Claude 3.5 Sonnet (מומלץ)"},
+                {"id": "google/gemini-3.8-flash", "name": "Google Gemini 3.8 Flash"},
+                {"id": "openai/gpt-4o-mini", "name": "OpenAI GPT-4o Mini"},
+                {"id": "meta-llama/llama-3.3-70b-instruct", "name": "Meta Llama 3.3 70B"},
+                {"id": "deepseek/deepseek-chat", "name": "DeepSeek V3"},
+            ]
+        if "x.ai" in url:
+            return [
+                {"id": "grok-2-latest", "name": "Grok 2 Latest (מומלץ)"},
+                {"id": "grok-2-vision-1212", "name": "Grok 2 Vision"},
+                {"id": "grok-beta", "name": "Grok Beta"},
+            ]
+        if "deepseek" in url:
+            return [
+                {"id": "deepseek-chat", "name": "DeepSeek Chat V3 (מומלץ)"},
+                {"id": "deepseek-reasoner", "name": "DeepSeek Reasoner R1"},
+            ]
+        if "opencode" in url:
+            return [
+                {"id": "claude-3-5-sonnet", "name": "Claude 3.5 Sonnet (מומלץ)"},
+                {"id": "gpt-4o", "name": "GPT-4o"},
+            ]
+        return [
+            {"id": "gpt-4o-mini", "name": "GPT-4o Mini (מומלץ)"},
+            {"id": "gpt-4o", "name": "GPT-4o"},
+            {"id": "o3-mini", "name": "o3-mini"},
+        ]
 
 
 def _openai_text(data: dict[str, Any]) -> str:

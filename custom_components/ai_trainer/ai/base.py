@@ -83,6 +83,15 @@ class AIProvider:
             [{"role": "user", "content": "ענה במילה אחת: מוכן"}],
         )
 
+    async def list_models(self) -> list[dict[str, str]]:
+        """Return a list of available models for this provider: [{'id': '...', 'name': '...'}]."""
+        return self.default_models()
+
+    @classmethod
+    def default_models(cls) -> list[dict[str, str]]:
+        """Return fallback suggestions when live listing is unavailable."""
+        return []
+
     # ------------------------------------------------------------------
     # HTTP helpers
     # ------------------------------------------------------------------

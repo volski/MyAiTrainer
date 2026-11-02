@@ -138,3 +138,47 @@ class AnthropicProvider(AIProvider):
         if not text:
             raise AIError("הספק החזיר תשובה ריקה.")
         return text
+
+    async def list_models(self) -> list[dict[str, str]]:
+        """List models from Anthropic."""
+        if not self.api_key:
+            return self.default_models()
+        headers = {
+            "x-api-key": self.api_key,
+            "anthropic-version": API_VERSION,
+        }
+        try:
+            import aiohttp
+
+            async with self.session.get(
+                "https://api.anthropic.com/v1/models",
+                headers=headers,
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    items = data.get("data") or []
+                    results = []
+                    for m in items:
+                        m_id = str(m.get("id") or "").strip()
+                        if not m_id:
+                            continue
+                        disp = str(m.get("display_name") or m_id).strip()
+                        results.append(
+                            {"id": m_id, "name": f"{disp} ({m_id})" if disp != m_id else m_id}
+                        )
+                    if results:
+                        return results
+        except Exception:  # noqa: BLE001
+            pass
+        return self.default_models()
+
+    @classmethod
+    def default_models(cls) -> list[dict[str, str]]:
+        return [
+            {"id": "claude-3-5-sonnet-latest", "name": "Claude 3.5 Sonnet (מומלץ)"},
+            {"id": "claude-3-7-sonnet-latest", "name": "Claude 3.7 Sonnet"},
+            {"id": "claude-3-5-haiku-latest", "name": "Claude 3.5 Haiku"},
+            {"id": "claude-3-opus-latest", "name": "Claude 3 Opus"},
+        ]
+

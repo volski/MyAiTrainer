@@ -153,3 +153,41 @@ class GoogleProvider(AIProvider):
                 raise AIError("הספק הגיע למגבלת אסימונים (MAX_TOKENS). הגדילו את max_tokens בהגדרות.")
             raise AIError("הספק החזיר תשובה ריקה.")
         return text
+
+    async def list_models(self) -> list[dict[str, str]]:
+        """List active Gemini models supporting generateContent."""
+        if not self.api_key:
+            return self.default_models()
+        url = f"{API_ROOT}?key={self.api_key}"
+        try:
+            import aiohttp
+
+            async with self.session.get(
+                url, timeout=aiohttp.ClientTimeout(total=10)
+            ) as resp:
+                if resp.status != 200:
+                    return self.default_models()
+                data = await resp.json()
+                raw_models = data.get("models") or []
+                results: list[dict[str, str]] = []
+                for m in raw_models:
+                    methods = m.get("supportedGenerationMethods") or []
+                    if "generateContent" not in methods:
+                        continue
+                    m_id = str(m.get("name") or "").removeprefix("models/").strip()
+                    if not m_id:
+                        continue
+                    disp = str(m.get("displayName") or m_id).strip()
+                    results.append({"id": m_id, "name": f"{disp} ({m_id})" if disp != m_id else m_id})
+                return results or self.default_models()
+        except Exception:  # noqa: BLE001
+            return self.default_models()
+
+    @classmethod
+    def default_models(cls) -> list[dict[str, str]]:
+        return [
+            {"id": "gemini-3.8-flash", "name": "Gemini 3.8 Flash (מומלץ)"},
+            {"id": "gemini-flash-latest", "name": "Gemini Flash Latest"},
+            {"id": "gemini-3.5-flash-lite", "name": "Gemini 3.5 Flash-Lite"},
+            {"id": "gemini-2.5-flash", "name": "Gemini 2.5 Flash"},
+        ]

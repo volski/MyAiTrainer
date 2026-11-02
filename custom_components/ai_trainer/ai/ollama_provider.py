@@ -79,3 +79,36 @@ class OllamaProvider(AIProvider):
         if not text:
             raise AIError("Ollama החזיר תשובה ריקה. ודאו שהמודל מותקן וטעון.")
         return text
+
+    async def list_models(self) -> list[dict[str, str]]:
+        """List downloaded models from the local Ollama instance."""
+        base = (self.base_url or DEFAULT_BASE).rstrip("/")
+        url = f"{base}/api/tags"
+        try:
+            import aiohttp
+
+            async with self.session.get(
+                url, timeout=aiohttp.ClientTimeout(total=5)
+            ) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    models = data.get("models") or []
+                    results = []
+                    for m in models:
+                        name = str(m.get("name") or "").strip()
+                        if name:
+                            results.append({"id": name, "name": name})
+                    if results:
+                        return results
+        except Exception:  # noqa: BLE001
+            pass
+        return self.default_models()
+
+    @classmethod
+    def default_models(cls) -> list[dict[str, str]]:
+        return [
+            {"id": "llama3.1:8b", "name": "Llama 3.1 8B (מומלץ)"},
+            {"id": "llama3.2-vision:11b", "name": "Llama 3.2 Vision 11B"},
+            {"id": "mistral:7b", "name": "Mistral 7B"},
+        ]
+

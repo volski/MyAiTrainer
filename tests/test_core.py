@@ -626,7 +626,35 @@ class ProviderTests(unittest.TestCase):
 
         # Check google
         google_meta = PROVIDERS["google"]
-        self.assertEqual(google_meta["default_model"], "gemini-2.0-flash")
+        self.assertEqual(google_meta["default_model"], "gemini-3.8-flash")
+
+    def test_default_models_lists(self):
+        from ai_trainer.ai.anthropic_provider import AnthropicProvider
+        from ai_trainer.ai.google_provider import GoogleProvider
+        from ai_trainer.ai.ollama_provider import OllamaProvider
+        from ai_trainer.ai.openai_provider import OpenAIProvider
+
+        g_models = GoogleProvider.default_models()
+        self.assertTrue(any(m["id"] == "gemini-3.8-flash" for m in g_models))
+
+        ant_models = AnthropicProvider.default_models()
+        self.assertTrue(any(m["id"] == "claude-3-5-sonnet-latest" for m in ant_models))
+
+        o_models = OpenAIProvider(session=None, model="").default_models()
+        self.assertTrue(any(m["id"] == "gpt-4o-mini" for m in o_models))
+
+        ol_models = OllamaProvider.default_models()
+        self.assertTrue(any(m["id"] == "llama3.1:8b" for m in ol_models))
+
+    def test_factory_migrates_retired_google_models(self):
+        from ai_trainer.ai.factory import create_provider
+
+        for old_model in ("gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.5-flash"):
+            prov = create_provider(
+                {"provider": "google", "model": old_model, "api_key": "k"},
+                session=None,
+            )
+            self.assertEqual(prov.model, "gemini-3.8-flash")
 
     def test_google_extract_text_filters_thoughts(self):
         from ai_trainer.ai.google_provider import GoogleProvider

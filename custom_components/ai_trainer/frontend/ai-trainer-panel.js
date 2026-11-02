@@ -770,7 +770,11 @@ class AITrainerPanel extends HTMLElement {
         )
         .join("") +
       "</select></label>" +
-      '<label class="field"><span>מודל</span><input name="model" value="' + esc(s.model || "") + '" placeholder="ברירת מחדל של הספק"></label>' +
+      '<label class="field"><span>מודל</span>' +
+      '<div style="display:flex;gap:6px;align-items:center;">' +
+      '<input name="model" list="models-datalist" value="' + esc(s.model || "") + '" placeholder="ברירת מחדל של הספק" style="flex:1">' +
+      '<button type="button" class="btn small ghost" data-action="fetch-models" title="טען רשימת מודלים מהספק" style="white-space:nowrap;padding:7px 10px;font-size:12px">🔄 רענן מודלים</button>' +
+      '</div><datalist id="models-datalist"></datalist></label>' +
       '<label class="field"><span>מפתח API</span><input name="api_key" type="password" autocomplete="new-password" placeholder="' +
       (s.api_key_set ? "שמור " + esc(s.api_key_hint || "") + " — מלאו כדי להחליף" : "הדביקו מפתח API") + '"></label>' +
       '<div class="full"><p class="hint" data-provider-hint></p></div>' +
@@ -1064,6 +1068,52 @@ class AITrainerPanel extends HTMLElement {
         ? meta.label + " · " + keyNote + (meta.supports_base_url ? " ניתן להגדיר כתובת בסיס." : "")
         : "";
     }
+    this._fetchModels(false);
+  }
+
+  async _fetchModels(notify = true) {
+    const form = this._app && this._app.querySelector("#settings-form");
+    if (!form) return;
+    const providerSelect = form.elements.namedItem("provider");
+    const provider = providerSelect ? providerSelect.value : "";
+    const apiKeyInput = form.elements.namedItem("api_key");
+    const apiKey = apiKeyInput ? apiKeyInput.value.trim() : "";
+    const baseUrlInput = form.elements.namedItem("base_url");
+    const baseUrl = baseUrlInput ? baseUrlInput.value.trim() : "";
+
+    const datalist = form.querySelector("#models-datalist");
+    if (!datalist) return;
+
+    try {
+      const res = await this._api("/models", {
+        method: "POST",
+        body: JSON.stringify({
+          provider,
+          api_key: apiKey,
+          base_url: baseUrl,
+        }),
+      });
+      const models = (res && res.models) || [];
+      if (models.length) {
+        datalist.innerHTML = models
+          .map(
+            (m) =>
+              '<option value="' + esc(m.id) + '">' + esc(m.name || m.id) + "</option>"
+          )
+          .join("");
+        if (notify) {
+          const catalogue = (this._config && this._config.providers) || [];
+          const meta = catalogue.find((item) => item.id === provider) || {};
+          this._toast("נטענו " + models.length + " מודלים מ-" + (meta.label || provider), "success");
+        }
+      } else if (notify) {
+        this._toast("לא נמצאו מודלים מהספק", "info");
+      }
+    } catch (err) {
+      if (notify) {
+        this._toast("שגיאה בטעינת מודלים: " + (err.message || err), "error");
+      }
+    }
   }
 
   _applySearch() {
@@ -1143,6 +1193,12 @@ class AITrainerPanel extends HTMLElement {
     }
     if (action === "refresh") {
       await this._loadAll();
+      return;
+    }
+    if (action === "fetch-models") {
+      await this._withBusy(async () => {
+        await this._fetchModels(true);
+      });
       return;
     }
     if (action === "refresh-logs") {
