@@ -706,6 +706,41 @@ class ProviderTests(unittest.TestCase):
         models = asyncio.run(oa_prov.list_models())
         self.assertTrue(any(m["id"] == "gpt-4o-mini" for m in models))
 
+    def test_openrouter_list_models_without_api_key_queries_endpoint(self):
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock
+
+        from ai_trainer.ai.openai_provider import OpenAIProvider
+
+        mock_resp = AsyncMock()
+        mock_resp.status = 200
+        mock_resp.json = AsyncMock(
+            return_value={
+                "data": [
+                    {"id": "meta-llama/llama-3.3-70b-instruct", "name": "Llama 3.3 70B"},
+                    {"id": "anthropic/claude-sonnet-5.5", "name": "Claude Sonnet 5.5"},
+                    {"id": "custom/other-model", "name": "Other Model"},
+                ]
+            }
+        )
+        mock_ctx = MagicMock()
+        mock_ctx.__aenter__ = AsyncMock(return_value=mock_resp)
+        mock_ctx.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.get = MagicMock(return_value=mock_ctx)
+
+        prov = OpenAIProvider(
+            session=mock_session,
+            model="",
+            base_url="https://openrouter.ai/api/v1",
+            api_key="",
+        )
+        models = asyncio.run(prov.list_models())
+        self.assertEqual(len(models), 3)
+        # Flagship claude-sonnet-5.5 sorted to top
+        self.assertEqual(models[0]["id"], "anthropic/claude-sonnet-5.5")
+
     def test_factory_migrates_retired_google_models(self):
         from ai_trainer.ai.factory import create_provider
 

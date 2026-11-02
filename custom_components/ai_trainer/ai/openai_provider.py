@@ -126,19 +126,24 @@ class OpenAIProvider(AIProvider):
 
     async def list_models(self) -> list[dict[str, str]]:
         """List models from the OpenAI / compatible endpoint."""
+        if not self.session:
+            return self.default_models()
+        url = (self.base_url or "").lower()
+        is_openrouter = "openrouter" in url
         if (
             not self.api_key
-            and "localhost" not in (self.base_url or "")
-            and "127.0.0.1" not in (self.base_url or "")
+            and "localhost" not in url
+            and "127.0.0.1" not in url
+            and not is_openrouter
         ):
             return self.default_models()
-        url = self._models_url()
+        endpoint = self._models_url()
         headers = self._headers()
         try:
             import aiohttp
 
             async with self.session.get(
-                url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)
+                endpoint, headers=headers, timeout=aiohttp.ClientTimeout(total=25)
             ) as resp:
                 if resp.status == 200:
                     data = await resp.json()
@@ -159,6 +164,24 @@ class OpenAIProvider(AIProvider):
                             {"id": m_id, "name": f"{name} ({m_id})" if name != m_id else m_id}
                         )
                     if results:
+                        if is_openrouter:
+                            flagships = [
+                                "anthropic/claude-sonnet-5.5",
+                                "google/gemini-3.8-flash",
+                                "openrouter/auto",
+                                "openai/gpt-4o-mini",
+                                "deepseek/deepseek-chat",
+                                "meta-llama/llama-3.3-70b-instruct",
+                            ]
+
+                            def _sort_key(item: dict[str, str]):
+                                try:
+                                    idx = flagships.index(item["id"])
+                                    return (0, idx)
+                                except ValueError:
+                                    return (1, item["id"].lower())
+
+                            results.sort(key=_sort_key)
                         return results
         except Exception:  # noqa: BLE001
             pass

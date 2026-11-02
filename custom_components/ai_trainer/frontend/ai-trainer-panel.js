@@ -206,6 +206,19 @@ tbody tr:last-child td { border-bottom: 0; }
   outline: none;
 }
 .modal-card.small { width: min(480px, 94vw); }
+.modal-card.model-picker { width: min(640px, 94vw); max-height: 85vh; display: flex; flex-direction: column; }
+.model-list { overflow-y: auto; max-height: 420px; display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+.model-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 10px 14px; border-radius: 12px;
+  border: 1px solid var(--divider-color, rgba(148, 163, 184, .25));
+  background: var(--secondary-background-color, #f8fafc);
+  cursor: pointer; transition: all .14s ease; text-align: start;
+}
+.model-item:hover { background: rgba(14, 165, 233, .08); border-color: rgba(14, 165, 233, .4); }
+.model-item.selected { border-color: var(--primary-color, #0ea5e9); background: rgba(14, 165, 233, .12); }
+.model-item .id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 700; font-size: 13px; direction: ltr; text-align: start; }
+.model-item .name { font-size: 11.5px; color: var(--secondary-text-color, #64748b); margin-top: 2px; }
 .modal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
 .modal-head h2 { margin: 0; font-size: 19px; }
 .modal-head .sub { margin-top: 4px; }
@@ -269,7 +282,7 @@ details summary { cursor: pointer; font-weight: 700; font-size: 12px; color: var
 }
 `;
 
-const CURRENT_VERSION = "1.0.34";
+const CURRENT_VERSION = "1.0.35";
 
 const GOAL_LABELS = {
   lose_weight: "ירידה במשקל",
@@ -790,9 +803,10 @@ class AITrainerPanel extends HTMLElement {
         .join("") +
       "</select></label>" +
       '<label class="field"><span>מודל</span>' +
-      '<div style="display:flex;gap:6px;align-items:center;">' +
-      '<input name="model" list="models-datalist" autocomplete="off" value="' + esc(s.model || "") + '" placeholder="ברירת מחדל של הספק" style="flex:1" onclick="this.select()">' +
-      '<button type="button" class="btn small ghost" data-action="fetch-models" title="טען רשימת מודלים מהספק" style="white-space:nowrap;padding:7px 10px;font-size:12px">🔄 רענן מודלים</button>' +
+      '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">' +
+      '<input name="model" list="models-datalist" autocomplete="off" value="' + esc(s.model || "") + '" placeholder="ברירת מחדל של הספק" style="flex:1 1 200px" onclick="this.select()">' +
+      '<button type="button" class="btn small ghost" data-action="open-model-picker" title="פתח חלון לבחירת מודל מהרשימה" style="white-space:nowrap;padding:7px 11px;font-size:12px">📋 בחר מרשימה</button>' +
+      '<button type="button" class="btn small ghost" data-action="fetch-models" title="טען רשימת מודלים מהספק" style="white-space:nowrap;padding:7px 11px;font-size:12px">🔄 רענן מודלים</button>' +
       '</div><datalist id="models-datalist"></datalist></label>' +
       '<label class="field"><span>מפתח API</span><input name="api_key" type="password" autocomplete="new-password" placeholder="' +
       (s.api_key_set ? "שמור " + esc(s.api_key_hint || "") + " — מלאו כדי להחליף" : "הדביקו מפתח API") + '"></label>' +
@@ -878,6 +892,7 @@ class AITrainerPanel extends HTMLElement {
   }
 
   _viewModal() {
+    if (this._modelPickerOpen) return this._viewModelPickerModal();
     if (this._addUserOpen) return this._viewAddUserModal();
     if (!this._selectedId) return "";
     if (!this._selectedUser) {
@@ -888,6 +903,75 @@ class AITrainerPanel extends HTMLElement {
       );
     }
     return this._viewUserModal(this._selectedUser);
+  }
+
+  _viewModelPickerModal() {
+    const form = this._app && this._app.querySelector("#settings-form");
+    const currentModel =
+      (form && form.elements.namedItem("model") && form.elements.namedItem("model").value) || "";
+    const providerSelect = form && form.elements.namedItem("provider");
+    const provider = providerSelect ? providerSelect.value : "";
+    const catalogue = (this._config && this._config.providers) || [];
+    const meta = catalogue.find((item) => item.id === provider) || {};
+    const providerLabel = meta.label || provider || "ספק AI";
+
+    const models = this._cachedModels || [];
+    const search = (this._modelSearch || "").toLowerCase().trim();
+    const filtered = search
+      ? models.filter(
+          (m) =>
+            (m.id && m.id.toLowerCase().includes(search)) ||
+            (m.name && m.name.toLowerCase().includes(search))
+        )
+      : models;
+
+    const listHtml = filtered.length
+      ? filtered
+          .map((m) => {
+            const isSelected = m.id === currentModel;
+            return (
+              '<div class="model-item' +
+              (isSelected ? " selected" : "") +
+              '" data-action="select-model" data-model-id="' +
+              esc(m.id) +
+              '">' +
+              '<div><div class="id">' +
+              esc(m.id) +
+              "</div>" +
+              (m.name && m.name !== m.id
+                ? '<div class="name">' + esc(m.name) + "</div>"
+                : "") +
+              "</div>" +
+              (isSelected
+                ? '<span class="badge blue">נבחר ✓</span>'
+                : '<button type="button" class="btn small ghost" style="pointer-events:none">בחר</button>') +
+              "</div>"
+            );
+          })
+          .join("")
+      : '<div class="empty"><span class="big">🔍</span>לא נמצאו מודלים תואמים לחיפוש.</div>';
+
+    return (
+      '<div class="modal-backdrop" data-action="close-modal"></div>' +
+      '<div class="modal-card model-picker" role="dialog" aria-modal="true" tabindex="-1">' +
+      '<div class="modal-head"><div>' +
+      "<h2>בחירת מודל — " +
+      esc(providerLabel) +
+      "</h2>" +
+      '<div class="sub">סה״כ ' +
+      models.length +
+      " מודלים זמינים מהספק. לחצו על מודל כדי לבחור בו.</div></div>" +
+      '<button class="x" data-action="close-modal" aria-label="סגור">×</button></div>' +
+      '<div><input id="model-picker-search" type="search" placeholder="חיפוש מודל מהיר (למשל: claude, gemini, llama, gpt, deepseek)..." value="' +
+      esc(this._modelSearch || "") +
+      '" autocomplete="off" autofocus></div>' +
+      '<div class="model-list">' +
+      listHtml +
+      "</div>" +
+      '<div class="actions" style="margin-top:14px;justify-content:flex-end">' +
+      '<button type="button" class="btn ghost" data-action="close-modal">סגור</button>' +
+      "</div></div>"
+    );
   }
 
   _viewAddUserModal() {
@@ -1082,6 +1166,7 @@ class AITrainerPanel extends HTMLElement {
         : "שם מודל";
       if (isUserChange) {
         modelInput.value = meta.default_model || "";
+        this._cachedModels = null;
       }
     }
     const baseRow = form.querySelector('[data-field="base_url"]');
@@ -1114,8 +1199,7 @@ class AITrainerPanel extends HTMLElement {
     const baseUrl = baseUrlInput ? baseUrlInput.value.trim() : "";
 
     const datalist = form.querySelector("#models-datalist");
-    if (!datalist) return;
-    datalist.innerHTML = "";
+    if (datalist) datalist.innerHTML = "";
 
     try {
       const res = await this._api("/models", {
@@ -1127,20 +1211,26 @@ class AITrainerPanel extends HTMLElement {
         }),
       });
       const models = (res && res.models) || [];
-      if (models.length) {
+      this._cachedModels = models;
+      if (models.length && datalist) {
         datalist.innerHTML = models
           .map(
             (m) =>
               '<option value="' + esc(m.id) + '">' + esc(m.name || m.id) + "</option>"
           )
           .join("");
-        if (notify) {
-          const catalogue = (this._config && this._config.providers) || [];
-          const meta = catalogue.find((item) => item.id === provider) || {};
+      }
+      if (this._modelPickerOpen) {
+        this._render();
+      }
+      if (notify) {
+        const catalogue = (this._config && this._config.providers) || [];
+        const meta = catalogue.find((item) => item.id === provider) || {};
+        if (models.length) {
           this._toast("נטענו " + models.length + " מודלים מ-" + (meta.label || provider), "success");
+        } else {
+          this._toast("לא נמצאו מודלים מהספק", "info");
         }
-      } else if (notify) {
-        this._toast("לא נמצאו מודלים מהספק", "info");
       }
     } catch (err) {
       if (notify) {
@@ -1234,6 +1324,36 @@ class AITrainerPanel extends HTMLElement {
       });
       return;
     }
+    if (action === "open-model-picker") {
+      this._modelSearch = "";
+      this._modelPickerOpen = true;
+      this._render();
+      if (!this._cachedModels || !this._cachedModels.length) {
+        this._fetchModels(false).then(() => {
+          if (this._modelPickerOpen) this._render();
+        });
+      }
+      setTimeout(() => {
+        const inp = this._root.querySelector("#model-picker-search");
+        if (inp) inp.focus();
+      }, 60);
+      return;
+    }
+    if (action === "select-model") {
+      const item = target.closest("[data-model-id]");
+      if (item) {
+        const modelId = item.getAttribute("data-model-id");
+        const form = this._app && this._app.querySelector("#settings-form");
+        if (form) {
+          const input = form.elements.namedItem("model");
+          if (input) input.value = modelId;
+        }
+        this._modelPickerOpen = false;
+        this._render();
+        this._toast("נבחר מודל: " + modelId, "success");
+      }
+      return;
+    }
     if (action === "refresh-logs") {
       await this._withBusy(() => this._refreshLogs());
       return;
@@ -1248,6 +1368,7 @@ class AITrainerPanel extends HTMLElement {
       return;
     }
     if (action === "close-modal") {
+      this._modelPickerOpen = false;
       this._addUserOpen = false;
       this._selectedId = null;
       this._selectedUser = null;
@@ -1380,13 +1501,58 @@ class AITrainerPanel extends HTMLElement {
       this._applySearch();
       return;
     }
+    if (target.id === "model-picker-search") {
+      this._modelSearch = target.value;
+      const listEl = this._root.querySelector(".model-list");
+      if (listEl) {
+        const search = (this._modelSearch || "").toLowerCase().trim();
+        const form = this._app && this._app.querySelector("#settings-form");
+        const currentModel =
+          (form && form.elements.namedItem("model") && form.elements.namedItem("model").value) || "";
+        const models = this._cachedModels || [];
+        const filtered = search
+          ? models.filter(
+              (m) =>
+                (m.id && m.id.toLowerCase().includes(search)) ||
+                (m.name && m.name.toLowerCase().includes(search))
+            )
+          : models;
+        listEl.innerHTML = filtered.length
+          ? filtered
+              .map((m) => {
+                const isSelected = m.id === currentModel;
+                return (
+                  '<div class="model-item' +
+                  (isSelected ? " selected" : "") +
+                  '" data-action="select-model" data-model-id="' +
+                  esc(m.id) +
+                  '">' +
+                  '<div><div class="id">' +
+                  esc(m.id) +
+                  "</div>" +
+                  (m.name && m.name !== m.id
+                    ? '<div class="name">' + esc(m.name) + "</div>"
+                    : "") +
+                  "</div>" +
+                  (isSelected
+                    ? '<span class="badge blue">נבחר ✓</span>'
+                    : '<button type="button" class="btn small ghost" style="pointer-events:none">בחר</button>') +
+                  "</div>"
+                );
+              })
+              .join("")
+          : '<div class="empty"><span class="big">🔍</span>לא נמצאו מודלים תואמים לחיפוש.</div>';
+      }
+      return;
+    }
     if (target.name === "provider") {
       this._syncProviderUi(true);
     }
   }
 
   _onKeyDown(event) {
-    if (event.key === "Escape" && (this._selectedId || this._addUserOpen)) {
+    if (event.key === "Escape" && (this._selectedId || this._addUserOpen || this._modelPickerOpen)) {
+      this._modelPickerOpen = false;
       this._addUserOpen = false;
       this._selectedId = null;
       this._selectedUser = null;
