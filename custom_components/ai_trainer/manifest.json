@@ -1,7 +1,7 @@
 {
   "domain": "ai_trainer",
   "name": "AI Trainer",
-  "version": "1.0.31",
+  "version": "1.0.32",
   "config_flow": true,
   "dependencies": ["http", "frontend", "panel_custom"],
   "after_dependencies": ["whatsapp"],

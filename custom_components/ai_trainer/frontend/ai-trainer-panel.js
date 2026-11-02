@@ -11,8 +11,6 @@ const AI_TRAINER_CSS = `
   min-height: 100%;
   background: var(--primary-background-color, #f4f6fb);
   color: var(--primary-text-color, #0f172a);
-  direction: rtl;
-  text-align: right;
 }
 * { box-sizing: border-box; }
 #app {
@@ -21,8 +19,6 @@ const AI_TRAINER_CSS = `
   padding: 24px 20px 90px;
   font-family: var(--paper-font-body1_-_font-family, "Heebo", "Assistant", "Segoe UI", system-ui, sans-serif);
   transition: opacity .15s ease;
-  direction: rtl;
-  text-align: right;
 }
 #app.busy { opacity: .55; pointer-events: none; }
 .topbar {
@@ -143,30 +139,33 @@ label.check input { width: auto; accent-color: var(--primary-color, #0ea5e9); }
 .form-grid .full { grid-column: 1 / -1; }
 .section-title { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 800; margin: 4px 0 12px; }
 .section-title .ico { font-size: 16px; }
-.table-wrap { overflow-x: auto; border-radius: 14px; direction: rtl; }
-table { width: 100%; border-collapse: collapse; font-size: 13px; direction: rtl; text-align: right; }
+.table-wrap { overflow-x: auto; border-radius: 14px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; text-align: start; }
+th, td {
+  text-align: start !important;
+  vertical-align: middle;
+}
 th {
-  text-align: right; padding: 12px 14px; font-size: 11px; letter-spacing: .2px;
+  padding: 12px 14px; font-size: 11px; letter-spacing: .2px;
   color: var(--secondary-text-color, #64748b); font-weight: 800;
   border-bottom: 1px solid var(--divider-color, rgba(148, 163, 184, .3));
   white-space: nowrap;
 }
 td {
-  text-align: right; padding: 12px 14px;
+  padding: 12px 14px;
   border-bottom: 1px solid var(--divider-color, rgba(148, 163, 184, .18));
-  vertical-align: middle;
 }
 tbody tr { cursor: pointer; transition: background .12s; }
 tbody tr:hover { background: rgba(14, 165, 233, .06); }
 tbody tr:last-child td { border-bottom: 0; }
-.person { display: flex; align-items: center; gap: 10px; text-align: right; }
+.person { display: flex; align-items: center; gap: 10px; text-align: start; }
 .avatar {
   width: 36px; height: 36px; border-radius: 50%; flex: 0 0 36px;
   display: grid; place-items: center; font-weight: 800; font-size: 13px;
   background: rgba(14, 165, 233, .14); color: #0284c7;
 }
 .person .who { font-weight: 700; line-height: 1.2; word-break: break-word; }
-.person .phone { color: var(--secondary-text-color, #64748b); font-size: 11px; direction: ltr; text-align: right; unicode-bidi: embed; display: inline-block; }
+.person .phone { color: var(--secondary-text-color, #64748b); font-size: 11px; direction: ltr; text-align: start; unicode-bidi: embed; display: inline-block; }
 .badge {
   display: inline-flex; align-items: center; gap: 5px;
   padding: 4px 9px; border-radius: 999px; font-size: 11px; font-weight: 800;
@@ -270,6 +269,8 @@ details summary { cursor: pointer; font-weight: 700; font-size: 12px; color: var
 }
 `;
 
+const CURRENT_VERSION = "1.0.32";
+
 const GOAL_LABELS = {
   lose_weight: "ירידה במשקל",
   build_muscle: "בניית שריר",
@@ -347,7 +348,7 @@ class AITrainerPanel extends HTMLElement {
       this._root.innerHTML =
         '<style>' + AI_TRAINER_CSS + '</style>' +
         '<div id="busy"></div>' +
-        '<div id="app" dir="rtl"></div>' +
+        '<div id="app"></div>' +
         '<div id="toast" class="toast"></div>';
       this._app = this._root.getElementById("app");
       this._busyEl = this._root.getElementById("busy");
@@ -545,7 +546,7 @@ class AITrainerPanel extends HTMLElement {
   _viewLoading() {
     return (
       '<div class="topbar"><div class="brand"><div class="logo">🤖</div>' +
-      '<div><h1>מאמן AI</h1><div class="sub">טוען נתונים…</div></div></div></div>' +
+      '<div><h1>מאמן AI</h1><div class="sub"><span class="badge blue mono" style="font-size:11px;font-weight:700;margin-inline-end:6px">גרסה v' + esc(CURRENT_VERSION) + "</span> · טוען נתונים…</div></div></div></div>" +
       '<div class="skeleton" style="height:150px"></div>' +
       '<div class="grid"><div class="skeleton span-4"></div>' +
       '<div class="skeleton span-4"></div><div class="skeleton span-4"></div></div>'
@@ -555,7 +556,7 @@ class AITrainerPanel extends HTMLElement {
   _viewError() {
     return (
       '<div class="topbar"><div class="brand"><div class="logo">🤖</div>' +
-      '<div><h1>מאמן AI</h1><div class="sub">לוח ניהול</div></div></div></div>' +
+      '<div><h1>מאמן AI</h1><div class="sub"><span class="badge blue mono" style="font-size:11px;font-weight:700;margin-inline-end:6px">גרסה v' + esc(CURRENT_VERSION) + "</span> · לוח ניהול</div></div></div></div>" +
       '<div class="card error-card"><h2>לא ניתן לטעון את הנתונים</h2>' +
       '<p class="hint">' + esc(this._error) + '</p>' +
       '<div class="actions"><button class="btn primary" data-action="refresh">נסה שוב</button>' +
@@ -567,21 +568,18 @@ class AITrainerPanel extends HTMLElement {
     const cfg = this._config || {};
     const stats = cfg.stats || {};
     const settings = cfg.settings || {};
-    const version = cfg.version || settings.version || "";
+    const version = cfg.version || settings.version || CURRENT_VERSION;
     const providerLabel = settings.provider_label || settings.provider || "ספק AI";
     const providerOn = !!stats.provider_ready;
     const waOn = !!stats.whatsapp_available;
     return (
       '<div class="topbar">' +
       '<div class="brand"><div class="logo">🤖</div><div>' +
-      '<div style="display:flex;align-items:center;gap:8px;">' +
       '<h1>מאמן AI</h1>' +
-      (version ? '<span class="badge blue mono" style="font-size:11px;font-weight:700">v' + esc(version) + "</span>" : "") +
-      "</div>" +
-      '<div class="sub">מאמן תזונה, שתייה ואימונים בוואטסאפ · עברית</div>' +
+      '<div class="sub"><span class="badge blue mono" style="font-size:11px;font-weight:700;margin-inline-end:6px">גרסה v' + esc(version) + "</span> · מאמן תזונה, שתייה ואימונים בוואטסאפ · עברית</div>" +
       "</div></div>" +
       '<div class="chips">' +
-      (version ? '<span class="chip mono" title="גרסת אינטגרציה"><span style="color:var(--secondary-text-color,#64748b)">גרסה</span> <b>v' + esc(version) + "</b></span>" : "") +
+      '<span class="chip mono" title="גרסת אינטגרציה"><span style="color:var(--secondary-text-color,#64748b)">גרסה</span> <b>v' + esc(version) + "</b></span>" +
       '<span class="chip"><i class="dot ' + (providerOn ? "on" : "warn") + '"></i>' +
       esc(providerLabel) + "</span>" +
       '<span class="chip"><i class="dot ' + (waOn ? "on" : "off") + '"></i>וואטסאפ</span>' +
@@ -709,18 +707,18 @@ class AITrainerPanel extends HTMLElement {
         return (
           '<tr data-action="open-user" data-id="' + esc(user.id) + '" data-search="' +
           esc((name + " " + (user.phone || "") + " " + goal).toLowerCase()) + '">' +
-          '<td style="text-align:right"><div class="person"><div class="avatar">' + esc(initial) + "</div><div>" +
+          '<td><div class="person"><div class="avatar">' + esc(initial) + "</div><div>" +
           '<div class="who">' + esc(name) + '</div><div class="phone" dir="ltr">' + esc(user.phone || "") +
           "</div></div></div></td>" +
-          '<td style="text-align:right"><span class="badge ' + (STATUS_BADGE[user.status] || "gray") + '">' +
+          '<td><span class="badge ' + (STATUS_BADGE[user.status] || "gray") + '">' +
           esc(STATUS_LABELS[user.status] || user.status) + "</span></td>" +
-          '<td style="text-align:right">' + esc(goal) + "</td>" +
-          '<td class="hide-sm" style="text-align:right">' + fmt(user.weight_kg) + ' ק״ג · ' + fmt(user.height_cm, 0) + " ס״מ</td>" +
-          '<td class="hide-sm" style="text-align:right">' + (user.bmi ? esc(user.bmi) + ' <span class="muted small">' + esc(user.bmi_category || "") + "</span>" : "—") + "</td>" +
-          '<td style="text-align:right"><div class="mini-bar" title="' + waterPercent + '%"><i style="width:' + waterPercent + '%"></i></div>' +
+          '<td>' + esc(goal) + "</td>" +
+          '<td class="hide-sm">' + fmt(user.weight_kg) + ' ק״ג · ' + fmt(user.height_cm, 0) + " ס״מ</td>" +
+          '<td class="hide-sm">' + (user.bmi ? esc(user.bmi) + ' <span class="muted small">' + esc(user.bmi_category || "") + "</span>" : "—") + "</td>" +
+          '<td><div class="mini-bar" title="' + waterPercent + '%"><i style="width:' + waterPercent + '%"></i></div>' +
           '<div class="muted small">' + fmt(user.water_done_ml / 1000, 1) + "/" + fmt(user.water_target_ml / 1000, 1) + " ל׳</div></td>" +
-          '<td style="text-align:right">' + (user.streak ? "🔥 " + esc(user.streak) : "—") + "</td>" +
-          '<td class="hide-sm" style="text-align:right">' + esc(fmtDate(user.updated_at)) + "</td>" +
+          '<td>' + (user.streak ? "🔥 " + esc(user.streak) : "—") + "</td>" +
+          '<td class="hide-sm">' + esc(fmtDate(user.updated_at)) + "</td>" +
           "</tr>"
         );
       })
@@ -732,15 +730,15 @@ class AITrainerPanel extends HTMLElement {
       '<button class="btn primary" data-action="add-user">+ משתמש חדש</button>' +
       '<button class="btn ghost" data-action="refresh">רענן</button></div>' +
       (users.length
-        ? '<div class="table-wrap"><table dir="rtl"><thead><tr>' +
-          '<th style="text-align:right">משתמש</th>' +
-          '<th style="text-align:right">סטטוס</th>' +
-          '<th style="text-align:right">מטרה</th>' +
-          '<th class="hide-sm" style="text-align:right">משקל / גובה</th>' +
-          '<th class="hide-sm" style="text-align:right">BMI</th>' +
-          '<th style="text-align:right">מים היום</th>' +
-          '<th style="text-align:right">רצף</th>' +
-          '<th class="hide-sm" style="text-align:right">עודכן</th>' +
+        ? '<div class="table-wrap"><table><thead><tr>' +
+          '<th>משתמש</th>' +
+          '<th>סטטוס</th>' +
+          '<th>מטרה</th>' +
+          '<th class="hide-sm">משקל / גובה</th>' +
+          '<th class="hide-sm">BMI</th>' +
+          '<th>מים היום</th>' +
+          '<th>רצף</th>' +
+          '<th class="hide-sm">עודכן</th>' +
           '</tr></thead><tbody>' + rows + "</tbody></table></div>" +
           '<div id="no-results" class="empty" style="display:none"><span class="big">🔍</span>לא נמצאו משתמשים תואמים.</div>'
         : '<div class="empty"><span class="big">👥</span>אין משתמשים עדיין.<br>' +
